@@ -1,5 +1,6 @@
 import type { Frame } from "../audio/frame";
 import type { PreparedNote, PreparedSong } from "./songs";
+import { vowelFamily } from "../audio/formants";
 
 export type Judgement = "perfect" | "great" | "good" | "miss";
 
@@ -360,7 +361,7 @@ export class GameRun {
         this.qN++;
         if (note.sung > 0.12) {
           note.errs.push(err);
-          if (this.song.song.vowels && f.vowel && f.vowelConf > 0.3) { note.vowelN++; if (f.vowel === note.lyric) note.vowelHits++; }
+          if (this.song.song.vowels && f.vowel && f.vowelConf > 0.3) { note.vowelN++; if (f.vowel === vowelFamily(note.lyric ?? "")) note.vowelHits++; }
         }
         if (q > 0) {
           if (note.sungAt < 0) note.sungAt = now;

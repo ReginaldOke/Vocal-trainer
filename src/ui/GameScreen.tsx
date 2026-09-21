@@ -449,7 +449,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     const hard = ph.filter((p) => p.onset === "hard").length, breathy = ph.filter((p) => p.onset === "breathy").length;
     const held = ph.filter((p) => p.ending === "held").length, faded = ph.filter((p) => p.ending === "faded").length, sagged = ph.filter((p) => p.ending === "sagged").length;
     const evenness = ph.length ? [...ph.map((p) => p.evennessDb)].sort((a, b) => a - b)[ph.length >> 1] : NaN;
-    if (summary.vowels) notes.push(summary.vowels.matched === summary.vowels.total ? "Every vowel read as the one asked for. The shapes are clear." : `${summary.vowels.matched} of ${summary.vowels.total} vowels read as the one asked for. Exaggerate the shape: a tall “ah”, a smile for “ee”, a small round “oo”.`);
+    if (summary.vowels) notes.push(summary.vowels.matched === summary.vowels.total ? "Every vowel read as the one asked for. The shapes are clear." : `${summary.vowels.matched} of ${summary.vowels.total} vowels read as the one asked for. Exaggerate the shape: a tall open “ah”, a smile for “ee”, a small round mouth for “oo” and “uh”.`);
     if (G.current.fade === 0) notes.push("That was from memory, with no backing at all. Your inner ear is doing the work now.");
     else if (G.current.fade < 1) notes.push(`The backing was turned down to ${Math.round(G.current.fade * 100)}% because you have sung this cleanly before. It fades further as you go.`);
     if (summary.octaves > 0) notes.push(summary.octaves === 1 ? "One note was the right note an octave away. Listen for how high or low the tune sits before you start." : `${summary.octaves} notes were the right notes an octave away. Listen for how high the tune sits before you start.`);
