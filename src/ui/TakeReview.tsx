@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Player } from "./Player";
 import { Tracker } from "../audio/analysis";
 import type { Frame } from "../audio/frame";
 import { analyseInWorker, decodeClip } from "../audio/offline";
@@ -461,7 +462,7 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
             )}
           </div>
 
-          <audio ref={audioRef} src={url} controls className="player" onTimeUpdate={(e) => setClock(e.currentTarget.currentTime)} />
+          <Player src={url} audioRef={audioRef} onTime={setClock} />
 
           <section className="review-stats">
             <div className="stat"><span>In tune</span><strong className="c-great">{Math.round(stats.pct[0])}%</strong></div>

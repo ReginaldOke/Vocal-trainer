@@ -148,6 +148,18 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
   .track-row .actions .small { padding: 0.4rem 0.6rem; font-size: 0.82rem; }
 }
 
+/* ---------- The app's own audio player ---------- */
+.player { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.45rem 0.6rem; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
+.player audio { display: none; }
+.player .time { font-variant-numeric: tabular-nums; font-size: 0.82rem; color: var(--ink-soft); flex: none; }
+.player button.icon { flex: none; padding: 0.45rem 0.55rem; display: inline-grid; place-items: center; }
+.player input[type="range"] { flex: 1; min-width: 0; height: 6px; appearance: none; background: linear-gradient(to right, var(--primary) var(--fill, 0%), var(--line-strong) var(--fill, 0%)); border-radius: 999px; outline: none; }
+.player input[type="range"]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); border: 2px solid var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+.player input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--ink); border: 2px solid var(--surface); }
+.buddy { touch-action: pan-y; cursor: grab; }
+.buddy:active { cursor: grabbing; }
+.lesson-between .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+
 /* ---------- Home: the live stage ---------- */
 .home { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 0.6rem; padding: 0 1.25rem 1rem; }
 .stage-wrap { position: relative; display: grid; grid-template-columns: 1fr 13rem; gap: 0.75rem; min-height: 0; align-items: end; }

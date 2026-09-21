@@ -479,8 +479,22 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
         g.beginPath(); if (hasRoundRect) g.roundRect(mx, my + 36, mw * cr, 6, 3); else g.rect(mx, my + 36, mw * cr, 6); g.fill();
         g.textAlign = "left";
 
+        // Echo mode: say whose turn it is.
+        if (run.mode === "echo" && !run.finished) {
+          const sinceTurn = now - run.turnAt;
+          if (run.listening || sinceTurn < 1.2) {
+            g.textAlign = "center"; g.textBaseline = "middle";
+            g.globalAlpha = run.listening ? 1 : 1 - sinceTurn / 1.2;
+            g.fillStyle = run.listening ? "rgba(255,255,255,0.92)" : "#3df0a2";
+            g.shadowColor = run.listening ? "rgba(120,150,255,0.9)" : "#3df0a2"; g.shadowBlur = 24;
+            g.font = `800 ${narrow ? 26 : 40}px "Inter", sans-serif`;
+            g.fillText(run.listening ? "Listen…" : "Your turn", W * 0.6, top + laneH * 0.22);
+            g.shadowBlur = 0; g.globalAlpha = 1;
+            g.textAlign = "left"; g.textBaseline = "alphabetic";
+          }
+        }
         // Flow mode: show what is wanted while the song waits.
-        if (run.mode === "flow" && run.target && !run.finished) {
+        if ((run.mode === "flow" || (run.mode === "echo" && !run.listening && now - run.turnAt > 1.2)) && run.target && !run.finished) {
           const n = run.target;
           const py = y(n.midi);
           const frac = Math.min(1, n.sung / n.need);
@@ -503,7 +517,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
             g.fillText(n.lyric && n.lyric.trim() ? `Sing “${n.lyric.replace(/-$/, "")}” on ${noteName(n.midi)}` : `Sing ${noteName(n.midi)}`, promptX, top + 26);
             g.font = `500 ${narrow ? 12 : 14}px "Inter", sans-serif`;
             g.fillStyle = "rgba(220,228,255,0.7)";
-            g.fillText(narrow ? "Sing it your way." : "The song follows your voice. Sing it your way.", promptX, top + (narrow ? 46 : 52));
+            g.fillText(run.mode === "echo" ? "Sing it back." : narrow ? "Sing it your way." : "The song follows your voice. Sing it your way.", promptX, top + (narrow ? 46 : 52));
             g.textAlign = "left";
             g.textBaseline = "alphabetic";
           }

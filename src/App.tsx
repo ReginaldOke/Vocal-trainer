@@ -20,6 +20,7 @@ import { PitchCanvas, type CanvasView, type TracePoint } from "./ui/PitchCanvas"
 import { Meters, NoteReadout, RangeBar, TipCard, type Readout } from "./ui/Panels";
 import { GameScreen, type ReviewTarget } from "./ui/GameScreen";
 import { TrackScreen } from "./ui/TrackScreen";
+import { Player } from "./ui/Player";
 import type { Track } from "./game/tracks";
 import { TakeReview } from "./ui/TakeReview";
 import { Home, nextSong } from "./ui/Home";
@@ -593,7 +594,7 @@ export default function App() {
                     ? `${Math.round(score.pctInTune)}% on the note${Math.abs(score.biasCents) >= 10 ? `, mostly ${score.biasCents < 0 ? "under it" : "over it"}` : ""}.`
                     : "No singing was picked up. Check the microphone and try again."}
                 </p>
-                {takeUrl && <audio src={takeUrl} controls className="player" aria-label="Listen back to your take" />}
+                {takeUrl && <Player src={takeUrl} label="Listen back to your take" />}
                 <button className="primary" onClick={() => goToStep(stepIndex + 1)}>{stepIndex === STEPS.length - 1 ? "See my report" : "Next"}</button>
                 <button onClick={startTake}>Try again</button>
               </>

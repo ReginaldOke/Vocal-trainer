@@ -8,7 +8,7 @@ export type Judgement = "perfect" | "great" | "good" | "miss";
  * "flow": the song waits for you. Each note sits at the hit line until you have held it, then the
  * highway slides on to the next one. "tempo": the song scrolls at its written speed.
  */
-export type Mode = "flow" | "tempo";
+export type Mode = "flow" | "tempo" | "echo";
 
 export interface Difficulty {
   id: "easy" | "medium" | "hard" | "pro";
@@ -84,7 +84,10 @@ export type RunEvent =
   | { type: "phrase"; report: PhraseReport }
   | { type: "fever-start" }
   | { type: "fever-end" }
-  | { type: "multiplier"; value: number };
+  | { type: "multiplier"; value: number }
+  /** echo mode: the melody of notes from..to is about to play; the singer listens */
+  | { type: "listen"; from: number; to: number; preview: boolean }
+  | { type: "your-turn" };
 
 export const BIN = 0.04;
 /** Mic, analysis window and reaction time put the sung pitch a little behind the bars. */
@@ -163,6 +166,15 @@ export class GameRun {
   private qN = 0;
   private slide: { from: number; to: number; at: number } | null = null;
 
+  /** echo mode: the melody is playing and the singer is listening, not being judged */
+  listening = false;
+  /** echo mode: engine time the singer was last handed the turn, for the "your turn" flash */
+  turnAt = -10;
+  private listenFrom = 0;
+  private listenTo = 0;
+  private listenAt = 0;
+  private previewing = false;
+
   constructor(public song: PreparedSong, public diff: Difficulty, public mode: Mode, public startAt: number) {
     this.notes = song.notes.map((n) => ({
       ...n,
@@ -170,7 +182,8 @@ export class GameRun {
       judged: null, quality: 0, cents: NaN, errs: [], octave: false, endedBy: "", vowelHits: 0, vowelN: 0, held: 0, sung: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
       need: Math.max(0.3, Math.min(4, n.dur * 0.75)),
     }));
-    this.pos = mode === "flow" ? song.notes[0].start : 0;
+    this.pos = mode === "tempo" ? 0 : song.notes[0].start;
+    if (mode === "echo") this.beginListen(0, startAt, false);
   }
 
   /** seconds into the take, already corrected for analysis latency (tempo mode) */
@@ -214,7 +227,54 @@ export class GameRun {
     this.lastT = now;
     this.tickFever(now);
     if (this.mode === "tempo") this.updateTempo(f, now, dt);
+    else if (this.listening) this.updateListen(f, now);
     else this.updateFlow(f, now, dt);
+  }
+
+  /** The phrase that starts at note `from`: its last note's index. */
+  private phraseEndFrom(from: number) {
+    return this.song.phraseEnds.find((e) => e >= from) ?? this.notes.length - 1;
+  }
+
+  /**
+   * Echo mode: play the notes from `from` to the end of their phrase (or the whole song for a
+   * preview) while the singer listens, then hand them the turn.
+   */
+  private beginListen(from: number, now: number, preview: boolean) {
+    this.listening = true;
+    this.previewing = preview;
+    this.listenFrom = from;
+    this.listenTo = preview ? this.notes.length - 1 : this.phraseEndFrom(from);
+    this.listenAt = now;
+    this.target = null;
+    this.slide = null;
+    this.pos = this.notes[from].start;
+    this.events.push({ type: "listen", from, to: this.listenTo, preview });
+  }
+
+  /** Hear the whole song from the top, then start again at the first phrase. Only before any singing. */
+  preview(now: number) {
+    if (this.mode !== "echo" || this.notes.some((n) => n.judged)) return false;
+    this.cur = 0;
+    this.beginListen(0, now, true);
+    return true;
+  }
+
+  private updateListen(f: Frame, now: number) {
+    const first = this.notes[this.listenFrom], last = this.notes[this.listenTo];
+    const span = last.start + last.dur - first.start;
+    const t = now - this.listenAt;
+    this.pos = first.start + Math.min(t, span);
+    this.pushTrace({ ...f, voiced: false, midi: NaN }, now, null, null, 0);
+    if (t < span + 0.7) return;
+    this.listening = false;
+    if (this.previewing) { this.previewing = false; this.beginListen(0, now, false); return; }
+    this.cur = this.listenFrom;
+    this.pos = first.start;
+    this.slide = null;
+    this.target = this.notes[this.cur];
+    this.turnAt = now;
+    this.events.push({ type: "your-turn" });
   }
 
   private tickFever(now: number) {
@@ -375,7 +435,7 @@ export class GameRun {
       if (quiet) this.silent += dt;
       if ((note.sung > 0 || this.armed) && quiet) this.gapFor += dt;
       // When a rest follows (or nothing does), the singer stopping is how the note ends.
-      const restAfter = !next || next.start - (note.start + note.dur) > 0.25;
+      const restAfter = !next || next.start - (note.start + note.dur) > 0.25 || (this.mode === "echo" && this.song.phraseEnds.includes(note.i));
       if (restAfter && note.sung >= MIN_HOLD && this.silent >= 0.5) { movedOn = true; note.endedBy = "stop"; }
     }
 
@@ -409,6 +469,8 @@ export class GameRun {
     if (!this.armed) { this.ref = NaN; this.stableFor = 0; this.changeFor = 0; this.dipped = false; }
     this.cur++;
     this.slide = { from: this.pos, to: 0, at: now };
+    // Echo mode: a phrase sung back means the next one is played.
+    if (this.mode === "echo" && this.song.phraseEnds.includes(note.i) && this.cur < this.notes.length) { this.armed = false; this.beginListen(this.cur, now, false); }
   }
 
   private judge(n: RunNote, qualityOverride: number | null, now: number) {

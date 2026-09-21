@@ -164,7 +164,7 @@ export function buildBird(): Rig {
 export function buildSnail(): Rig {
   const skin = mat(0xd9b48a, { roughness: 0.7 }), shellMat = mat(0xb86b3a, { roughness: 0.55 }), band = mat(0x7a3f1d, { roughness: 0.6 });
   const dark = mat(0x2a1c14), white = mat(0xffffff, { roughness: 0.3 }), mouthMat = mat(0x8a2a3a, { roughness: 0.9 }), cheek = mat(0xffb0a0, { emissive: 0xff4060, emissiveIntensity: 0, transparent: true, opacity: 0.6 });
-  const root = new THREE.Group(); root.position.y = -0.4;
+  const root = new THREE.Group(); root.position.y = -0.4; root.rotation.y = -Math.PI / 2 + 0.6; root.position.x = -0.2;
   const foot = capsule(0.42, 2.2, skin); foot.rotation.z = Math.PI / 2; foot.position.set(0.1, -0.3, 0); root.add(foot);
   const head = new THREE.Group(); head.position.set(1.15, 0.05, 0); root.add(head);
   head.add(sphere(0.5, skin));
@@ -183,7 +183,7 @@ export function buildSnail(): Rig {
   const mats = [skin, shellMat, band, dark, white, mouthMat, cheek];
   return {
     root,
-    camera: { y: 0.4, z: 6.0, look: 0.0 },
+    camera: { y: 0.5, z: 5.2, look: 0.1 },
     update(p) {
       mouth.scale.set(0.12 + 0.05 * p.bright, 0.03 + 0.2 * p.open, 0.18 + 0.12 * p.bright);
       // Eye stalks reach up for high notes and pull in under strain.
@@ -204,7 +204,7 @@ export function buildSnail(): Rig {
 export function buildLizard(): Rig {
   const scale = mat(0x3fbf8f, { roughness: 0.55 }), belly = mat(0xc8f0d8, { roughness: 0.7 }), spine = mat(0x1f8f6a), dewMat = mat(0xff8c42, { roughness: 0.6, emissive: 0xff3b3b, emissiveIntensity: 0 });
   const dark = mat(0x102820), white = mat(0xffffff, { roughness: 0.3 }), mouthMat = mat(0x7a1b2e, { roughness: 0.9 }), tongueMat = mat(0xff5c7a);
-  const root = new THREE.Group(); root.position.y = -0.3;
+  const root = new THREE.Group(); root.position.y = -0.3; root.rotation.y = -Math.PI / 2 + 0.55; root.position.x = -0.15; root.scale.setScalar(1.25);
   const body = capsule(0.45, 1.6, scale); body.rotation.z = Math.PI / 2; body.position.set(-0.2, 0, 0); root.add(body);
   const tum = capsule(0.32, 1.4, belly); tum.rotation.z = Math.PI / 2; tum.position.set(-0.2, -0.18, 0.12); root.add(tum);
   const head = new THREE.Group(); head.position.set(1.0, 0.15, 0); root.add(head);
@@ -225,7 +225,7 @@ export function buildLizard(): Rig {
   const mats = [scale, belly, spine, dewMat, dark, white, mouthMat, tongueMat];
   return {
     root,
-    camera: { y: 0.3, z: 6.2, look: -0.05 },
+    camera: { y: 0.5, z: 5.4, look: 0.05 },
     update(p) {
       jaw.rotation.z = -0.45 * p.open;
       mouth.scale.set(0.35 + 0.1 * p.bright, 0.03 + 0.22 * p.open, 0.2);

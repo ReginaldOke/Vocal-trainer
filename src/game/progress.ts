@@ -94,7 +94,7 @@ const DEFAULT: Progress = {
   updatedAt: 0,
   best: {},
   achievements: {},
-  settings: { difficulty: "medium", mode: "flow", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false, buddy: "frog" },
+  settings: { difficulty: "medium", mode: "echo", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false, buddy: "frog" },
 };
 
 export function loadProgress(): Progress {
@@ -102,7 +102,10 @@ export function loadProgress(): Progress {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULT);
     const p = JSON.parse(raw) as Partial<Progress>;
-    return { ...structuredClone(DEFAULT), ...p, settings: { ...DEFAULT.settings, ...(p.settings ?? {}) } };
+    const merged: Progress = { ...structuredClone(DEFAULT), ...p, settings: { ...DEFAULT.settings, ...(p.settings ?? {}) } };
+    // Singing at your own pace over chords did not work for people; hearing each part first does.
+    if (merged.settings.mode === "flow") merged.settings.mode = "echo";
+    return merged;
   } catch {
     return structuredClone(DEFAULT);
   }

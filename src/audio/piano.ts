@@ -60,6 +60,32 @@ export class Piano {
     });
   }
 
+  /** One melody note with a short ring, for playing a phrase the singer will sing back. */
+  note(midi: number, when: number, dur: number, velocity = 0.8) {
+    if (!this.tone) return;
+    this.lastStrikeAt = Math.max(this.lastStrikeAt, when + dur);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, when);
+    gain.gain.linearRampToValueAtTime(velocity * 0.34, when + 0.008);
+    gain.gain.setTargetAtTime(velocity * 0.18, when + 0.03, 0.25);
+    gain.gain.setTargetAtTime(0, when + Math.max(0.08, dur - 0.05), 0.09);
+    gain.connect(this.tone);
+    const f = midiToHz(midi);
+    const partials: [OscillatorType, number, number][] = [["triangle", 1, 1], ["sine", 2, 0.35], ["sine", 3, 0.12], ["sine", 4.01, 0.05]];
+    for (const [type, mult, amp] of partials) {
+      const osc = this.ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = f * mult;
+      const pg = this.ctx.createGain();
+      pg.gain.value = amp;
+      osc.connect(pg).connect(gain);
+      osc.start(when);
+      osc.stop(when + dur + 0.8);
+      this.voices.add(osc);
+      osc.onended = () => { this.voices.delete(osc); gain.disconnect(); };
+    }
+  }
+
   audible(now = this.ctx.currentTime) {
     return now - this.lastStrikeAt < this.ring;
   }

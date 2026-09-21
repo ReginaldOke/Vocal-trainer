@@ -145,6 +145,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     tipAt: 0,
     lastUi: 0,
     lastClock: 0,
+    maskUntil: 0,
     stepAt: 0,
     stepWanted: -1,
     finishing: false,
@@ -167,10 +168,27 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     const g = G.current;
     if (!g.backing && engine.ctx) g.backing = new Backing(engine.ctx);
     g.backing?.start();
-    const lo = Math.min(from, to), hi = Math.max(from, to);
     if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing });
-    g.backing?.preview(lo);
-    setTimeout(() => G.current.backing?.preview(hi), 900);
+    // One tone that slides from the bottom line to the top and back, exactly the shape to sing.
+    const ctx = engine.ctx;
+    if (ctx) {
+      const t0 = ctx.currentTime + 0.05, up = 1.1, down = 1.1;
+      const osc = ctx.createOscillator(), gain = ctx.createGain(), lp = ctx.createBiquadFilter();
+      osc.type = "triangle";
+      lp.type = "lowpass"; lp.frequency.value = 1800;
+      osc.frequency.setValueAtTime(midiToHz(from), t0);
+      osc.frequency.exponentialRampToValueAtTime(midiToHz(to), t0 + up);
+      osc.frequency.setValueAtTime(midiToHz(to), t0 + up + 0.15);
+      osc.frequency.exponentialRampToValueAtTime(midiToHz(from), t0 + up + 0.15 + down);
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(0.22, t0 + 0.08);
+      gain.gain.setValueAtTime(0.22, t0 + up + down + 0.05);
+      gain.gain.linearRampToValueAtTime(0, t0 + up + down + 0.3);
+      osc.connect(lp).connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + up + down + 0.4);
+      g.maskUntil = engine.now() + up + down + 0.6;
+    }
     g.lastCue = engine.now();
   }, [engine]);
   const settings = progress.settings;
@@ -223,9 +241,11 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   }, [engine, synth, onProgress]);
 
   useEffect(() => {
-    const handle = (raw: Frame) => {
+    const handle = (heardIn: Frame) => {
       const g = G.current;
-      const now = raw.t;
+      const now = heardIn.t;
+      // While the app itself is playing a melody or a cue, the mic hears the speakers: ignore it.
+      const raw: Frame = now < g.maskUntil ? { ...heardIn, voiced: false, midi: NaN } : heardIn;
       const dt = g.lastT ? Math.min(0.1, now - g.lastT) : 0;
       g.lastT = now;
       const { gate, noise } = room.current;
@@ -284,7 +304,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       a.strain = live.strain;
       run.update(f, now);
       const ear = run.song.song.ear;
-      if (ear) {
+      if (run.mode === "echo") backing?.setTarget(null);
+      else if (ear) {
         // Ear training: one cue when the note arrives, then silence while the singer answers.
         const key = run.target ? run.target.i : -1;
         if (key !== g.earKey) {
@@ -303,6 +324,14 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       for (const e of run.events) {
         view.current.effects.push(e);
         if (e.type === "fever-start") { const un = unlockLive(g.progress, "fever"); if (un) setToast(`Badge: ${un.title}`); }
+        if (e.type === "listen" && backing && engine.ctx) {
+          const first = run.notes[e.from];
+          const phrase = run.notes.slice(e.from, e.to + 1).map((n) => ({ midi: n.midi, start: n.start - first.start, dur: Math.max(0.12, n.dur * 0.92) }));
+          // Ear drills play a cue rather than the answer: the note below, the note itself, or nothing.
+          const melody = ear === "silent" ? [] : ear === "interval" ? [{ midi: first.midi - (run.song.song.earInterval ?? 7), start: 0, dur: 0.7 }] : phrase;
+          const end = melody.length ? backing.playMelody(melody) : engine.ctx.currentTime;
+          g.maskUntil = now + (end - engine.ctx.currentTime) + 0.4;
+        }
         if (e.type === "phrase") {
           const r = e.report;
           const say = g.pending ?? phraseTip(r, now);
@@ -478,7 +507,11 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         {tip && <div className="tip" data-tone={tip.tone}><span className="tip-mark" /><p>{tip.text}</p></div>}
         <div className="actions">
           <button className="primary big" onClick={() => startStep(stepIndex + 1)}>{next ? `Next: ${next.title}` : "Finish lesson"}</button>
-          <button className="ghost" onClick={quit}>Stop here</button>
+          <div className="actions">
+            <button className="ghost" onClick={() => startStep(stepIndex)}>Do it again</button>
+            {stepIndex > 0 && <button className="ghost" onClick={() => startStep(stepIndex - 1)}>Back a step</button>}
+            <button className="ghost" onClick={quit}>Stop here</button>
+          </div>
         </div>
       </main>
     );
@@ -505,7 +538,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         <div className="play-bar">
           <strong>{song.title}</strong>
           {lessonBar ?? <span>{difficultyById(settings.difficulty).label}</span>}
-          {G.current.fade < 1 && <span className="pill teal">{G.current.fade === 0 ? "From memory" : `Backing ${Math.round(G.current.fade * 100)}%`}</span>}
+          {G.current.fade < 1 && settings.mode !== "echo" && <span className="pill teal">{G.current.fade === 0 ? "From memory" : `Backing ${Math.round(G.current.fade * 100)}%`}</span>}
+          {settings.mode === "echo" && <button className="small" onClick={() => { const r = G.current.run; if (r) r.preview(engine.now()); }}>Hear it all</button>}
           <MicMeter state={avatar} />
           <button className="small" onClick={quit}>Quit</button>
         </div>
@@ -513,7 +547,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <GameCanvas view={view} />
           <BuddyPanel state={avatar} kind={settings.buddy} onSwap={(k) => setSetting("buddy", k)} />
         </div>
-        <CoachDrawer tip={tip} fallback={step && step.kind === "song" ? step.instruction : settings.mode === "flow" ? "The song follows your voice. Sing it your way." : "Listening…"} tone="info" />
+        <CoachDrawer tip={tip} fallback={step && step.kind === "song" ? step.instruction : settings.mode === "echo" ? "Listen to each part, then sing it back." : settings.mode === "flow" ? "The song follows your voice. Sing it your way." : "Listening…"} tone="info" />
         {toast && <div className="toast" role="status">{toast}</div>}
       </main>
     );

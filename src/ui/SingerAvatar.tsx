@@ -24,8 +24,10 @@ export const EMPTY_AVATAR: AvatarState = { voiced: false, midi: NaN, db: -90, h1
 const clamp = (n: number, a = 0, b = 1) => Math.max(a, Math.min(b, n));
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
-export function SingerAvatar({ state, kind, className }: { state: React.MutableRefObject<AvatarState>; kind: BuddyKind; className?: string }) {
+export function SingerAvatar({ state, kind, className, onTap }: { state: React.MutableRefObject<AvatarState>; kind: BuddyKind; className?: string; onTap?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
+  /** pointer state: hover lifts the partner a little; a drag spins it round; a tap swaps it */
+  const P = useRef({ hover: false, down: false, moved: false, x0: 0, spin0: 0, spin: 0, idleAt: 0 });
 
   useEffect(() => {
     const el = host.current!;
@@ -48,7 +50,10 @@ export function SingerAvatar({ state, kind, className }: { state: React.MutableR
     glow.position.set(0, rig.camera.look + 0.4, -0.9);
     scene.add(glow);
 
-    let open = 0, bright = 0.5, pitch = 0.4, strain = 0, shine = 0, loudS = 0, blink = 0, nextBlink = 2 + Math.random() * 3;
+    let open = 0, bright = 0.5, pitch = 0.4, strain = 0, shine = 0, loudS = 0, blink = 0, nextBlink = 2 + Math.random() * 3, hoverS = 0;
+    const baseY = rig.root.position.y;
+    const baseSpin = rig.root.rotation.y;
+    P.current.spin = baseSpin;
     let raf = 0;
     const t0 = performance.now();
     let last = t0;
@@ -93,6 +98,14 @@ export function SingerAvatar({ state, kind, className }: { state: React.MutableR
 
       const pose: Pose = { open, bright, pitch, strain, loud: loudS, shine, lid, fever: s.fever, voiced: s.voiced, t };
       rig.update(pose);
+      // Hover: perk up and lean in. Drag: turn to show the other side, then drift back to face you.
+      const pt = P.current;
+      const perk = pt.hover || pt.down ? 1 : 0;
+      hoverS = lerp(hoverS, perk, 0.12);
+      if (!pt.down && now - pt.idleAt > 2500) pt.spin = baseSpin + (pt.spin - baseSpin) * 0.97;
+      rig.root.rotation.y = pt.spin;
+      rig.root.scale.setScalar(1 + 0.06 * hoverS);
+      rig.root.position.y = baseY + 0.08 * hoverS + 0.03 * hoverS * Math.sin(t * 6);
 
       const pulse = s.fever ? 0.5 + 0.5 * Math.sin(t * 8) : 0;
       glowMat.emissiveIntensity = 0.15 + 1.6 * shine + 0.8 * pulse;
@@ -115,5 +128,15 @@ export function SingerAvatar({ state, kind, className }: { state: React.MutableR
     };
   }, [state, kind]);
 
-  return <div ref={host} className={`buddy ${className ?? ""}`} role="img" aria-label="Your singing partner" />;
+  const pt = P.current;
+  return (
+    <div ref={host} className={`buddy ${className ?? ""}`} role="img" aria-label="Your singing partner"
+      onPointerEnter={() => { pt.hover = true; }}
+      onPointerLeave={() => { pt.hover = false; }}
+      onPointerDown={(e) => { pt.down = true; pt.moved = false; pt.x0 = e.clientX; pt.spin0 = pt.spin; e.currentTarget.setPointerCapture(e.pointerId); }}
+      onPointerMove={(e) => { if (!pt.down) return; const dx = e.clientX - pt.x0; if (Math.abs(dx) > 6) pt.moved = true; pt.spin = pt.spin0 + dx * 0.012; }}
+      onPointerUp={(e) => { pt.down = false; pt.idleAt = performance.now(); e.currentTarget.releasePointerCapture(e.pointerId); if (!pt.moved) onTap?.(); }}
+      onPointerCancel={() => { pt.down = false; pt.idleAt = performance.now(); }}
+    />
+  );
 }
