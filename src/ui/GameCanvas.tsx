@@ -14,6 +14,8 @@ export interface GameView {
   glide?: GlideRun | null;
   /** called when the singer taps a note tube, so it can be sounded */
   onNoteTap?: (note: RunNote) => void;
+  /** called when the singer taps one of a siren's boundary lines */
+  onPitchTap?: (midi: number) => void;
 }
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; }
@@ -50,11 +52,18 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
     const flashes = new Map<number, number>();
     const onTap = (e: PointerEvent) => {
       const v = view.current;
-      const run = v.run;
-      if (!run || !v.onNoteTap) return;
       const r = canvas.getBoundingClientRect();
       const px = e.clientX - r.left, py = e.clientY - r.top;
       const L = layout;
+      if (v.glide && v.onPitchTap) {
+        const midi = L.lo + ((L.bottom - py) / (L.bottom - L.top)) * (L.hi - L.lo);
+        const c = v.glide.cfg;
+        const rowSt = (L.bottom - L.top) / (L.hi - L.lo);
+        for (const m of [c.from, c.to]) if (Math.abs(midi - m) * rowSt <= 16) { v.onPitchTap(m); return; }
+        return;
+      }
+      const run = v.run;
+      if (!run || !v.onNoteTap) return;
       const t = L.pos + (px - L.hitX) / L.pps;
       const midi = L.lo + ((L.bottom - py) / (L.bottom - L.top)) * (L.hi - L.lo);
       let best: RunNote | null = null, bestD = Infinity;
@@ -539,6 +548,17 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
         for (const m of [c.from, c.to]) {
           g.strokeStyle = "rgba(108,140,255,0.7)"; g.lineWidth = 1.5; g.setLineDash([6, 6]);
           g.beginPath(); g.moveTo(gutter, y(m)); g.lineTo(W, y(m)); g.stroke(); g.setLineDash([]);
+          // Name the line and invite a tap to hear it.
+          const label = `${m === Math.max(c.from, c.to) ? "top" : "bottom"} ${noteName(m)} · tap to hear`;
+          g.font = `600 ${narrow ? 11 : 13}px "Inter", sans-serif`;
+          g.textAlign = "left"; g.textBaseline = "middle";
+          const tw = g.measureText(label).width + 16;
+          const lx = hitX + 14;
+          g.fillStyle = "rgba(27,29,36,0.9)";
+          g.beginPath(); if (hasRoundRect) g.roundRect(lx, y(m) - 11, tw, 22, 11); else g.rect(lx, y(m) - 11, tw, 22); g.fill();
+          g.fillStyle = "rgba(200,212,255,0.95)";
+          g.fillText(label, lx + 8, y(m));
+          g.textBaseline = "alphabetic";
         }
         const tr = glide.trace;
         g.lineCap = "round";

@@ -30,6 +30,8 @@ export interface GlideSummary {
 export class GlideRun {
   done = 0;
   finished = false;
+  /** seconds since the singer last made a sound */
+  quietFor = 0;
   /** recent sung pitch for drawing */
   trace: { t: number; midi: number; voiced: boolean; db: number }[] = [];
   private lastMidi = NaN;
@@ -56,6 +58,7 @@ export class GlideRun {
     if (this.finished) return;
     const span = Math.abs(this.far - this.near);
     if (f.voiced) {
+      this.quietFor = 0;
       if (this.gap >= 0.25 && this.sungThisRep > 0.3) this.breaks++;
       this.gap = 0;
       this.sungThisRep += dt;
@@ -76,6 +79,7 @@ export class GlideRun {
       }
     } else {
       this.gap += dt;
+      this.quietFor += dt;
       this.lastMidi = NaN;
     }
     void span;

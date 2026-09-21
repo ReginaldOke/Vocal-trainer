@@ -115,13 +115,26 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     /** the most important coaching remark since the last phrase ended; shown when the phrase does */
     pending: null as Tip | null,
     glide: null as GlideRun | null,
+    lastCue: -10,
     earKey: -2,
     lessonStart: 0,
     inLesson: false,
     fade: 1,
   });
   G.current.progress = progress;
-  const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [], onNoteTap: (n) => G.current.backing?.preview(n.midi) });
+  const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [], onNoteTap: (n) => G.current.backing?.preview(n.midi), onPitchTap: (m) => G.current.backing?.preview(m) });
+
+  /** Bottom note, then top note, so the singer knows where the siren goes. */
+  const cueGlide = useCallback((from: number, to: number) => {
+    const g = G.current;
+    if (!g.backing && engine.ctx) g.backing = new Backing(engine.ctx);
+    g.backing?.start();
+    const lo = Math.min(from, to), hi = Math.max(from, to);
+    if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing });
+    g.backing?.preview(lo);
+    setTimeout(() => G.current.backing?.preview(hi), 900);
+    g.lastCue = engine.now();
+  }, [engine]);
   const settings = progress.settings;
 
   useEffect(() => { onFocus(phase !== "select"); }, [phase, onFocus]);
@@ -188,6 +201,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       if (gl && !gl.finished) {
         gl.update(raw, now);
         a.q = raw.voiced ? 0.7 : 0;
+        // A long silence probably means they have lost the notes: give them again.
+        if (gl.quietFor > 5 && now - g.lastCue > 6) cueGlide(gl.cfg.from, gl.cfg.to);
         if (gl.finished) {
           const sm = gl.summary();
           setStepResult({ title: lessonStepTitle(), line: `${Math.round(sm.smoothness * 100)}% smooth, ${Math.round(sm.coverage * 100)}% of the range`, stars: sm.smoothness > 0.85 ? 3 : sm.smoothness > 0.6 ? 2 : 1 });
@@ -246,7 +261,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       if (now - g.lastUi > 0.1) { g.lastUi = now; if (now - g.tipAt > 6) setTip(null); }
       if (run.finished) void finish();
     });
-  }, [engine, tracker, coach, finish, avatar, room]);
+  }, [engine, tracker, coach, finish, avatar, room, cueGlide]);
 
   useEffect(() => {
     if (!toast) return;
@@ -319,13 +334,14 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       g.glide = new GlideRun(step.glide, engine.now());
       view.current.glide = g.glide;
       g.backing?.setTarget(null);
+      cueGlide(step.glide.from, step.glide.to);
       setPhase("glide");
     } else {
       g.glide = null;
       view.current.glide = null;
       play(step.song);
     }
-  }, [lesson, engine, play, onProgress]);
+  }, [lesson, engine, play, onProgress, cueGlide]);
 
   useEffect(() => {
     if (!lesson) return;

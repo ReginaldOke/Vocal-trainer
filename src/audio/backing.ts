@@ -64,13 +64,15 @@ export class Backing {
     this.lastPulse = this.ctx.currentTime;
   }
 
+  private previewTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** Sound one note once, on request, without touching what the backing is doing. */
   preview(midi: number) {
-    if (this.piano.audible() === false && this.target === null) this.piano.setLevel(this.mode === "full" ? 0.9 : Math.max(0.35, this.level), 0.01);
-    else this.piano.setLevel(Math.max(this.mode === "full" ? 0.9 : this.level, 0.35), 0.01);
+    this.piano.setLevel(Math.max(this.mode === "full" ? 0.9 : this.level, 0.35), 0.01);
     this.piano.strike([midi], 0.85);
-    // Fall back to the backing's own level once the preview has rung.
-    setTimeout(() => this.apply(), 1200);
+    // Fall back to the backing's own level once the last preview has rung out.
+    if (this.previewTimer) clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(() => { this.previewTimer = null; this.apply(); }, 2600);
   }
 
   /** Ear training: play one note once, then stay silent. No chord, no pulse, no following tone. */
