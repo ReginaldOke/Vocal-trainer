@@ -73,7 +73,7 @@ export class YouTubePlayer {
         videoId,
         width: "100%",
         height: "100%",
-        playerVars: { playsinline: 1, controls: 0, rel: 0, modestbranding: 1, disablekb: 1, fs: 0, origin: location.origin },
+        playerVars: { playsinline: 1, controls: 1, rel: 0, modestbranding: 1, fs: 0, origin: location.origin },
         events: {
           onReady: () => {
             this.title = this.player?.getVideoData().title ?? "";

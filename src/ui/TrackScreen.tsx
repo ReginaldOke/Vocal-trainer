@@ -251,6 +251,14 @@ export function TrackScreen({ engine, tracker, coach, avatar, room, progress, ca
     if (p.state === "playing") p.pause(); else p.play();
   };
   const back = () => { const s = S.current; const st = s.plan?.steps[s.step]; if (!s.player || !st || st.kind === "glide") return; s.player.seek(Math.max(st.from, s.player.time() - 10)); };
+  /** Jump to a point in this step's stretch of the song and keep going from there. */
+  const scrub = (v: number) => {
+    const s = S.current; const st = s.plan?.steps[s.step];
+    if (!s.player || !st || st.kind === "glide") return;
+    s.player.seek(st.from + v);
+    setClock({ t: v, to: st.to - st.from });
+    if (s.player.state !== "playing") s.player.play();
+  };
   const changeVolume = (v: number) => { const s = S.current; s.volume = v; setVolume(v); if (current?.kind === "sing") s.player?.setVolume(v); };
   const changeRate = (r: number) => { const s = S.current; s.rate = r; setRate(r); s.player?.setRate(r); };
   const skip = () => {
@@ -309,7 +317,9 @@ export function TrackScreen({ engine, tracker, coach, avatar, room, progress, ca
               <>
                 <button className="icon" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
                 <button className="icon" onClick={back} aria-label="Back ten seconds"><RotateCcw size={18} /></button>
-                <span className="clock">{fmtClock(clock.t)} / {fmtClock(clock.to)}</span>
+                <span className="clock">{fmtClock(clock.t)}</span>
+                <input className="scrub" type="range" min={0} max={Math.max(1, clock.to)} step={0.5} value={Math.min(clock.t, clock.to)} onChange={(e) => scrub(Number(e.target.value))} aria-label="Position in the song" style={{ ["--fill" as string]: `${clock.to ? (clock.t / clock.to) * 100 : 0}%` }} />
+                <span className="clock">{fmtClock(clock.to)}</span>
               </>
             )}
             {isSing && (
