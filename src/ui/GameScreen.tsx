@@ -9,7 +9,7 @@ import { midiToHz, noteName } from "../audio/pitch";
 import { Coach, foldedCents, type Tip } from "../coach/rules";
 import { SONGS, chooseTonic, loadCustomSongs, prepareSong, saveCustomSongs, songSpan, type Song } from "../game/songs";
 import { songFromMidi } from "../game/midi";
-import { GameRun, difficultyById, type RunSummary } from "../game/scoring";
+import { GameRun, difficultyById, type PhraseReport, type RunSummary } from "../game/scoring";
 import { bestForSong, levelFromXp, recordRun, saveProgress, unlockLive, type Progress, type RecordOutcome, type Settings } from "../game/progress";
 import { GameCanvas, type GameView } from "./GameCanvas";
 import { SingerAvatar, type AvatarState } from "./SingerAvatar";
@@ -43,6 +43,17 @@ interface Props {
 }
 
 type Phase = "select" | "play" | "results";
+
+/** A word about the phrase that just ended, when the coach had nothing more pressing to say. */
+function phraseTip(r: PhraseReport, t: number): Tip | null {
+  if (r.breaths > 0) return { id: "phrase-breath", tone: "info", t, text: r.breaths === 1 ? "That phrase took two breaths. Plan one at the start and make it last." : "Lots of breaths in that phrase. Take a bigger one at the start and spend it slowly." };
+  if (r.ending === "sagged") return { id: "phrase-sag", tone: "warn", t, text: "The last note dropped as the air ran out. Think up on the final note and finish it while it is still strong." };
+  if (r.ending === "faded") return { id: "phrase-fade", tone: "info", t, text: "The phrase faded at the end. Keep the ribs wide right to the last note." };
+  if (r.onset === "hard") return { id: "phrase-hard", tone: "info", t, text: "That phrase started with a click. Begin on the breath, as if the vowel had an h in front." };
+  if (r.onset === "breathy") return { id: "phrase-breathy", tone: "info", t, text: "That start was breathy. Bring the sound in a little sooner with a gentle m." };
+  if (r.evennessDb > 5) return { id: "phrase-even", tone: "info", t, text: "The volume swung about in that phrase. Aim for one even stream of air." };
+  return { id: "phrase-good", tone: "good", t, text: "One breath, steady, and held to the end. That is how a phrase should feel." };
+}
 
 const Stars = ({ n, size = "" }: { n: number; size?: string }) => (
   <span className={`stars ${size}`} aria-label={`${n} of 5 stars`}>{[1, 2, 3, 4, 5].map((i) => <span key={i} data-on={i <= n}>★</span>)}</span>
@@ -90,6 +101,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     tipAt: 0,
     lastUi: 0,
     finishing: false,
+    /** the most important coaching remark since the last phrase ended; shown when the phrase does */
+    pending: null as Tip | null,
   });
   G.current.progress = progress;
   const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
@@ -173,15 +186,24 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       run.update(f, now);
       backing?.setTarget(run.target ? run.target.midi : run.countIn(now) > 0 ? run.notes[0].midi : null, run.target ? run.target.i : "count-in");
 
+      const target = run.target;
+      const next = coach.update(live, tevents, target ? target.midi : null, target ? now - target.onAt : 0, noise);
+      // Nobody can read while singing: keep the best remark and show it when the phrase ends.
+      const rank = { alert: 0, warn: 1, info: 2, good: 3 } as const;
+      if (next && (next.tone === "alert" || !g.pending || rank[next.tone] < rank[g.pending.tone])) g.pending = next;
+      if (next?.tone === "alert") { g.tipAt = now; setTip(next); g.pending = null; }
+
       for (const e of run.events) {
         view.current.effects.push(e);
         if (e.type === "fever-start") { const un = unlockLive(g.progress, "fever"); if (un) setToast(`Badge: ${un.title}`); }
+        if (e.type === "phrase") {
+          const r = e.report;
+          const say = g.pending ?? phraseTip(r, now);
+          if (say) { g.tipAt = now; setTip(say); }
+          g.pending = null;
+        }
       }
       run.events = [];
-
-      const target = run.target;
-      const next = coach.update(live, tevents, target ? target.midi : null, target ? now - target.onAt : 0, noise);
-      if (next) { g.tipAt = now; setTip(next); }
       if (now - g.lastUi > 0.1) { g.lastUi = now; if (now - g.tipAt > 6) setTip(null); }
       if (run.finished) void finish();
     });
@@ -222,7 +244,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       }
     }
     applyBuddyVoice(st.buddyVoice);
-    if (import.meta.env.DEV) (window as unknown as { __backing: unknown }).__backing = g.backing;
+    if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing, __run: run, __recStart: now });
     g.recStart = engine.startRecording() ?? now;
     setSong(s);
     setSummary(null);
@@ -279,6 +301,17 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     else if (summary.counts.miss >= summary.notes.length * 0.3) notes.push("A few notes got away. Try Easy, or turn the guide tone up.");
     else if (summary.stars >= 4 && settings.difficulty !== "pro") notes.push(`Clean. Try ${settings.difficulty === "easy" ? "Medium" : settings.difficulty === "medium" ? "Hard" : "Pro"} next.`);
     else notes.push("Centred and relaxed. Keep that feeling.");
+    const ph = summary.phrases;
+    const oneBreath = ph.filter((p) => p.breaths === 0).length;
+    const hard = ph.filter((p) => p.onset === "hard").length, breathy = ph.filter((p) => p.onset === "breathy").length;
+    const held = ph.filter((p) => p.ending === "held").length, faded = ph.filter((p) => p.ending === "faded").length, sagged = ph.filter((p) => p.ending === "sagged").length;
+    const evenness = ph.length ? [...ph.map((p) => p.evennessDb)].sort((a, b) => a - b)[ph.length >> 1] : NaN;
+    if (summary.octaves > 0) notes.push(summary.octaves === 1 ? "One note was the right note an octave away. Listen for how high or low the tune sits before you start." : `${summary.octaves} notes were the right notes an octave away. Listen for how high the tune sits before you start.`);
+    if (ph.length >= 2 && oneBreath / ph.length < 0.6) notes.push("Most phrases took more than one breath. Take a fuller breath at each phrase start and spend it slowly.");
+    else if (hard >= 2) notes.push("Several phrases started with a click. Begin on the breath, as if the vowel had an h in front.");
+    else if (breathy >= 2) notes.push("Several starts were breathy. Bring the sound in sooner with a gentle m.");
+    else if (sagged >= 2) notes.push("Phrase endings dropped in pitch. Think up on the final note and finish while the sound is still strong.");
+    else if (faded >= 2) notes.push("Phrase endings faded. Keep the ribs wide right to the last note.");
     const trouble = summary.notes.filter((n) => n.judged === "miss" || n.judged === "good").slice(0, 4);
     const i = SONGS.indexOf(song);
     const nextUp = SONGS[(i + 1) % SONGS.length];
@@ -317,6 +350,15 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <div className="xpbar"><div style={{ width: `${(lvl.into / lvl.need) * 100}%` }} /></div>
           {outcome.unlocked.length > 0 && <ul className="unlocks">{outcome.unlocked.map((a) => <li key={a.id}><strong>{a.title}</strong> {a.blurb}</li>)}</ul>}
         </section>
+
+        {ph.length > 0 && (
+          <section className="results-grid" aria-label="Breath and tone">
+            <div className="stat"><span>One breath</span><strong className={oneBreath === ph.length ? "c-great" : ""}>{oneBreath}/{ph.length}</strong></div>
+            <div className="stat"><span>Starts</span><strong>{hard ? `${hard} hard` : breathy ? `${breathy} breathy` : "clean"}</strong></div>
+            <div className="stat"><span>Level</span><strong className={evenness <= 3 ? "c-great" : evenness > 5 ? "c-miss" : ""}>{evenness <= 3 ? "steady" : evenness > 5 ? "uneven" : "fair"}</strong></div>
+            <div className="stat"><span>Endings</span><strong className={held === ph.length ? "c-great" : ""}>{held}/{ph.length} held</strong></div>
+          </section>
+        )}
 
         <section className="card coach-notes">
           <h2>Pip's note</h2>

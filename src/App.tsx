@@ -76,6 +76,7 @@ export default function App() {
     calFrames: [] as Frame[],
     lastUi: 0,
     tipAt: 0,
+    pending: null as Tip | null,
   });
   const view = useRef<CanvasView>({ trace: [], now: () => engine.now(), exercise: null, takeStart: 0, range: null, floorDb: -60 });
   const gameView = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
@@ -171,7 +172,12 @@ export default function App() {
 
       if (s.coaching !== "off") {
         const next = coach.update(live, events, target ? target.midi : null, target ? f.t - target.onAt : 0, s.noiseDb);
-        if (next && (s.coaching === "full" || RANGE_TIPS.has(next.id))) { s.tipAt = f.t; setTip(next); }
+        if (next && (s.coaching === "full" || RANGE_TIPS.has(next.id))) {
+          // During a sung exercise, hold remarks for the end of the phrase; alerts and range tips show at once.
+          if (run && next.tone !== "alert") s.pending = next;
+          else { s.tipAt = f.t; setTip(next); }
+        }
+        if (run) for (const e of gameView.current.effects) if (e.type === "phrase" && s.pending) { s.tipAt = f.t; setTip(s.pending); s.pending = null; }
       }
 
       if (s.step === "mic" && s.micStart >= 0) {

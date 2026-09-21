@@ -38,6 +38,8 @@ export interface PreparedSong {
   song: Song;
   tonic: number;
   notes: PreparedNote[];
+  /** indices of notes that end a phrase: a natural place to breathe */
+  phraseEnds: number[];
   /** seconds of count-in before the first note */
   leadIn: number;
   /** seconds from take start to the end of the last note */
@@ -193,7 +195,23 @@ export function prepareSong(song: Song, tonic: number): PreparedSong {
   }
   const { lo, hi } = songSpan(song);
   const last = notes[notes.length - 1];
-  return { song, tonic, notes, leadIn, end: last.start + last.dur, beat, lo: tonic + lo, hi: tonic + hi };
+  return { song, tonic, notes, phraseEnds: findPhraseEnds(notes, beat), leadIn, end: last.start + last.dur, beat, lo: tonic + lo, hi: tonic + hi };
+}
+
+/**
+ * Where a singer would breathe: before a rest, after a long note that finishes a word, and at the end.
+ * A heuristic, but folk tunes and hymns follow it closely.
+ */
+export function findPhraseEnds(notes: PreparedNote[], beat: number): number[] {
+  const ends: number[] = [];
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i], next = notes[i + 1];
+    if (!next) { ends.push(i); break; }
+    const gap = next.start - (n.start + n.dur);
+    const longNote = n.dur >= beat * 1.9 && !(n.lyric ?? "").endsWith("-");
+    if (gap > 0.25 || longNote) ends.push(i);
+  }
+  return ends;
 }
 
 export type VoicePreset = "low" | "mid" | "high" | "auto";
@@ -218,6 +236,7 @@ export function prepareFromNotes(id: string, title: string, notes: { midi: numbe
     song: { id, title, credit: "", kind: "drill", tier: 1, bpm, beatsPerBar: 4, blurb: "", steps: [] },
     tonic: Math.min(...midis),
     notes: laid,
+    phraseEnds: findPhraseEnds(laid, 60 / bpm),
     leadIn: 0,
     end: last ? last.start + last.dur : 0,
     beat: 60 / bpm,

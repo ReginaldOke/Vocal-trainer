@@ -85,8 +85,11 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
 
       // Pitch window: the song plus a margin, eased so it never jumps.
       let wantLo = lo, wantHi = hi;
-      if (run) { wantLo = run.song.lo - 3; wantHi = run.song.hi + 3; }
-      else {
+      if (run) {
+        wantLo = run.song.lo - 3; wantHi = run.song.hi + 3;
+        const recent = run.trace.filter((p) => !Number.isNaN(p.midi) && p.t > now - 2).map((p) => p.midi);
+        if (recent.length) { wantLo = Math.min(wantLo, Math.min(...recent) - 2); wantHi = Math.max(wantHi, Math.max(...recent) + 2); }
+      } else {
         const recent = v.free.filter((p) => p.voiced && p.t > now - 4).map((p) => p.midi);
         if (recent.length) { wantLo = Math.min(...recent) - 4; wantHi = Math.max(...recent) + 4; }
         else { wantLo = 52; wantHi = 70; }
@@ -318,9 +321,15 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
           const j = JUDGE[e.judgement];
           const py = y(e.note.midi);
           if (j.burst) burst(hitX, py, j.burst * (fever ? 1.5 : 1), fever ? "#ffd166" : j.color);
-          popups.push({ text: e.skipped ? "SKIPPED" : j.text, sub: e.points ? `+${e.points}` : "", x: hitX + 24, y: py - tubeH, born: tNow, color: j.color, big: e.judgement === "perfect" });
+          popups.push({ text: e.octave ? "OCTAVE OFF" : e.skipped ? "SKIPPED" : j.text, sub: e.octave ? "right note, wrong octave" : e.points ? `+${e.points}` : "", x: hitX + 24, y: py - tubeH, born: tNow, color: j.color, big: e.judgement === "perfect" });
           if (e.judgement !== "miss") comboPop = 1;
           if (e.combo > 0 && e.combo % 10 === 0) popups.push({ text: `${e.combo} COMBO`, sub: "", x: W * 0.55, y: top + laneH * 0.3, born: tNow, color: "#ffffff", big: true });
+        } else if (e.type === "phrase") {
+          const r = e.report;
+          const good = r.breaths === 0 && r.ending === "held";
+          const text = r.breaths === 0 ? "ONE BREATH" : `${r.breaths + 1} BREATHS`;
+          const sub = r.ending === "held" ? (r.onset === "hard" ? "hard start" : r.onset === "breathy" ? "breathy start" : "held to the end") : r.ending === "faded" ? "faded at the end" : "sagged at the end";
+          popups.push({ text, sub, x: W * 0.55, y: top + laneH * 0.62, born: tNow, color: good ? "#37d6b2" : "#ffb84d", big: false });
         } else if (e.type === "fever-start") {
           feverFlash = 1;
           popups.push({ text: "FEVER!", sub: "double points", x: W * 0.55, y: top + laneH * 0.25, born: tNow, color: "#ffd166", big: true });

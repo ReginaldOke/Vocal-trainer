@@ -1,5 +1,4 @@
 import type { Frame } from "../audio/frame";
-import { foldedCents } from "../coach/rules";
 import type { PreparedNote, PreparedSong } from "./songs";
 
 export type Judgement = "perfect" | "great" | "good" | "miss";
@@ -37,6 +36,10 @@ export interface RunNote extends PreparedNote {
   /** median signed error in cents over the sung frames, NaN if not sung */
   cents: number;
   errs: number[];
+  /** the right note, an octave away */
+  octave: boolean;
+  /** flow mode: what ended the note (for tuning) */
+  endedBy: string;
   /** flow mode: seconds of on-pitch singing banked so far, seconds sung at any pitch, and how many are needed */
   held: number;
   sung: number;
@@ -57,8 +60,24 @@ export interface TracePt {
   db: number;
 }
 
+export type Onset = "clean" | "hard" | "breathy";
+export type Ending = "held" | "faded" | "sagged";
+
+/** How one phrase was breathed and shaped, judged from level and pitch rather than from the notes. */
+export interface PhraseReport {
+  /** index of the phrase's last note */
+  end: number;
+  /** breaths taken inside the phrase (0 means sung in one breath) */
+  breaths: number;
+  onset: Onset;
+  /** spread of the level across the phrase, dB */
+  evennessDb: number;
+  ending: Ending;
+}
+
 export type RunEvent =
-  | { type: "note"; note: RunNote; judgement: Judgement; points: number; combo: number; skipped: boolean }
+  | { type: "note"; note: RunNote; judgement: Judgement; points: number; combo: number; skipped: boolean; octave: boolean }
+  | { type: "phrase"; report: PhraseReport }
   | { type: "fever-start" }
   | { type: "fever-end" }
   | { type: "multiplier"; value: number };
@@ -79,6 +98,8 @@ const STABLE_BEFORE_CHANGE = 0.15;
 const CHANGE_CONFIRM = 0.08;
 /** flow mode: a jump of at least this many semitones from the note being sung is a new note */
 const CHANGE_SEMITONES = 1.5;
+/** flow mode: a dip in level this deep, then a recovery, is a re-attack of the same pitch */
+const DIP_DB = 7;
 
 const NOTE_POINTS: Record<Judgement, number> = { perfect: 100, great: 60, good: 30, miss: 0 };
 const SUSTAIN_PER_SECOND = 40;
@@ -88,6 +109,8 @@ const median = (a: number[]) => {
   const s = [...a].sort((x, y) => x - y);
   return s[s.length >> 1];
 };
+const mean = (a: number[]) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN);
+const std = (a: number[]) => { const m = mean(a); return a.length ? Math.sqrt(mean(a.map((v) => (v - m) ** 2))) : NaN; };
 const ease = (u: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
 
 /** Everything that happens to the score during one take. Pure: no DOM, no React. */
@@ -102,6 +125,9 @@ export class GameRun {
   crowd = 0.5;
   counts: Record<Judgement, number> = { perfect: 0, great: 0, good: 0, miss: 0 };
   trace: TracePt[] = [];
+  /** the whole take at frame rate, for phrase judgement */
+  log: { t: number; db: number; voiced: boolean; midi: number }[] = [];
+  phrases: PhraseReport[] = [];
   events: RunEvent[] = [];
   finished = false;
   /** the note the singer is currently being judged against */
@@ -112,7 +138,6 @@ export class GameRun {
   /** flow mode: seconds of silence on the current note, for hints */
   silent = 0;
   private lastT = -1;
-  private centre: number;
   /** flow mode: song position in seconds of the written layout */
   private pos: number;
   private cur = 0;
@@ -121,6 +146,15 @@ export class GameRun {
   private ref = NaN;
   private stableFor = 0;
   private changeFor = 0;
+  /** level tracking for re-attacks: a consonant makes a dip even without a gap */
+  private peakDb = -90;
+  private dipDb = 0;
+  private dipped = false;
+  private nextFor = 0;
+  /** after a note ended by being held, the next one waits for a fresh attack rather than stealing the tail */
+  private armed = false;
+  private armedFor = 0;
+  private onTargetFor = 0;
   private qSum = 0;
   private qN = 0;
   private slide: { from: number; to: number; at: number } | null = null;
@@ -129,10 +163,9 @@ export class GameRun {
     this.notes = song.notes.map((n) => ({
       ...n,
       bins: new Float32Array(Math.max(1, Math.ceil(n.dur / BIN))).fill(-1),
-      judged: null, quality: 0, cents: NaN, errs: [], held: 0, sung: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
+      judged: null, quality: 0, cents: NaN, errs: [], octave: false, endedBy: "", held: 0, sung: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
       need: Math.max(0.3, Math.min(4, n.dur * 0.75)),
     }));
-    this.centre = (song.lo + song.hi) / 2;
     this.pos = mode === "flow" ? song.notes[0].start : 0;
   }
 
@@ -190,22 +223,23 @@ export class GameRun {
     }
   }
 
-  /** Error against the target, forgiving the first moment after a note change. */
+  /** Error against the target in real cents (an octave off is 1200), forgiving the first moment after a note change. */
   private errorFor(f: Frame, target: RunNote, sinceStart: number) {
-    let err = foldedCents(f.midi, target.midi);
+    let err = (f.midi - target.midi) * 100;
     if (sinceStart < 0.12) {
       const prev = this.notes[target.i - 1];
-      if (prev) { const e2 = foldedCents(f.midi, prev.midi); if (Math.abs(e2) < Math.abs(err)) err = e2; }
+      if (prev) { const e2 = (f.midi - prev.midi) * 100; if (Math.abs(e2) < Math.abs(err)) err = e2; }
     }
     return err;
   }
 
   private pushTrace(f: Frame, now: number, target: RunNote | null, err: number | null, q: number) {
-    const shown = !f.voiced ? NaN : target && err !== null ? target.midi + err / 100 : this.centre + foldedCents(f.midi, this.centre) / 100;
     this.liveErr = err;
     this.liveQ = q;
-    this.trace.push({ t: now, midi: shown, err, q, db: f.db });
+    this.trace.push({ t: now, midi: f.voiced ? f.midi : NaN, err, q, db: f.db });
     if (this.trace.length > 600) this.trace.splice(0, 200);
+    this.log.push({ t: now, db: f.db, voiced: f.voiced, midi: f.midi });
+    void target;
   }
 
   private updateTempo(f: Frame, now: number, dt: number) {
@@ -268,9 +302,38 @@ export class GameRun {
     let movedOn = false;
     if (f.voiced) {
       this.silent = 0;
-      if (note.sung === 0 || Number.isNaN(this.ref)) { this.ref = f.midi; this.stableFor = 0; this.changeFor = 0; }
+      if (this.armed) {
+        // The last note was held to its end; the singer is probably still on it. Wait for a fresh
+        // attack, a jump, or the new pitch itself before this note starts counting.
+        this.peakDb = Math.max(this.peakDb - dt * 6, f.db);
+        if (!this.dipped && f.db < this.peakDb - DIP_DB) { this.dipped = true; this.dipDb = f.db; }
+        else if (this.dipped) this.dipDb = Math.min(this.dipDb, f.db);
+        const jump = Math.abs(f.midi - this.ref);
+        if (jump < 0.75) { this.ref += (f.midi - this.ref) * 0.2; this.changeFor = 0; } else if (jump >= CHANGE_SEMITONES) this.changeFor += dt; else this.changeFor = 0;
+        if (this.frameQuality((f.midi - note.midi) * 100) > 0) this.onTargetFor += dt; else this.onTargetFor = 0;
+        this.armedFor += dt;
+        const fresh = this.gapFor >= 0.06 || (this.dipped && f.db > this.dipDb + DIP_DB * 0.6) || this.changeFor >= CHANGE_CONFIRM || this.onTargetFor >= 0.12 || this.armedFor >= 1.5;
+        if (!fresh) {
+          this.gapFor = 0;
+          this.pos = this.slide ? this.slide.from + (note.start - this.slide.from) * slideU : note.start;
+          this.pushTrace(f, now, note, null, 0);
+          return;
+        }
+        this.armed = false;
+        this.gapFor = 0;
+      }
+      if (note.sung === 0 || Number.isNaN(this.ref)) { this.ref = f.midi; this.stableFor = 0; this.changeFor = 0; this.peakDb = f.db; this.dipped = false; this.nextFor = 0; }
+      // A consonant between repeated notes shows as a dip in level and a recovery.
+      this.peakDb = Math.max(this.peakDb - dt * 6, f.db);
+      if (!this.dipped && f.db < this.peakDb - DIP_DB) { this.dipped = true; this.dipDb = f.db; }
+      else if (this.dipped) this.dipDb = Math.min(this.dipDb, f.db);
+      const reattack = this.dipped && f.db > this.dipDb + DIP_DB * 0.6 && note.sung >= MIN_HOLD;
+      // Singing the next note's pitch, while off this one, is the surest sign of having moved on.
+      if (next && note.sung >= MIN_HOLD && this.frameQuality((f.midi - note.midi) * 100) === 0 && this.frameQuality((f.midi - next.midi) * 100) > 0) this.nextFor += dt; else this.nextFor = 0;
       // A breath and a fresh attack is a new note, whatever its pitch.
-      if (this.gapFor >= 0.06 && note.sung >= MIN_HOLD) movedOn = true;
+      if (this.gapFor >= 0.06 && note.sung >= MIN_HOLD) { movedOn = true; note.endedBy = "breath"; }
+      else if (reattack) { movedOn = true; note.endedBy = `dip ${this.peakDb.toFixed(0)}/${this.dipDb.toFixed(0)}/${f.db.toFixed(0)}`; }
+      else if (this.nextFor >= 0.12) { movedOn = true; note.endedBy = "next"; }
       else {
         const jump = Math.abs(f.midi - this.ref);
         if (jump < 0.75) {
@@ -279,7 +342,7 @@ export class GameRun {
           this.ref += (f.midi - this.ref) * 0.2;
         } else if (jump >= CHANGE_SEMITONES) {
           this.changeFor += dt;
-          if (this.stableFor >= STABLE_BEFORE_CHANGE && this.changeFor >= CHANGE_CONFIRM && note.sung >= MIN_HOLD) movedOn = true;
+          if (this.stableFor >= STABLE_BEFORE_CHANGE && this.changeFor >= CHANGE_CONFIRM && note.sung >= MIN_HOLD) { movedOn = true; note.endedBy = "jump"; }
         } else {
           // Between a wobble and a jump: let it ride.
           this.changeFor = 0;
@@ -292,18 +355,20 @@ export class GameRun {
         q = this.frameQuality(err);
         this.qSum += q;
         this.qN++;
+        if (note.sung > 0.12) note.errs.push(err);
         if (q > 0) {
           if (note.sungAt < 0) note.sungAt = now;
           note.held += dt;
-          note.errs.push(err);
           this.score += SUSTAIN_PER_SECOND * q * this.multiplier * (this.fever.active ? 2 : 1) * dt;
         }
       }
     } else {
-      this.silent += dt;
-      if (note.sung > 0) this.gapFor += dt;
+      // The detector also drops frames on a wobbly or breathy tone; only a real fall in level is a breath.
+      const quiet = (note.sung === 0 && !this.armed) || f.db < this.peakDb - 12;
+      if (quiet) this.silent += dt;
+      if ((note.sung > 0 || this.armed) && quiet) this.gapFor += dt;
       // Nothing follows the last note, so the singer stopping is how it ends.
-      if (!next && note.sung >= MIN_HOLD && this.silent >= 0.5) movedOn = true;
+      if (!next && note.sung >= MIN_HOLD && this.silent >= 0.5) { movedOn = true; note.endedBy = "stop"; }
     }
 
     const frac = Math.min(1, note.sung / note.need);
@@ -315,6 +380,7 @@ export class GameRun {
     this.pushTrace(f, now, note, err, q);
 
     if (frac >= 1 || movedOn) {
+      if (!movedOn) { note.endedBy = "hold"; this.armed = true; this.armedFor = 0; this.onTargetFor = 0; this.dipped = false; }
       this.completeFlowNote(note, now, false);
       // The frame that started the new note belongs to it.
       if (movedOn && f.voiced && depth === 0) this.updateFlow(f, now, dt, 1);
@@ -330,17 +396,28 @@ export class GameRun {
     this.qSum = 0;
     this.qN = 0;
     this.gapFor = 0;
-    this.ref = NaN;
-    this.stableFor = 0;
-    this.changeFor = 0;
+    this.nextFor = 0;
     this.silent = 0;
+    if (!this.armed) { this.ref = NaN; this.stableFor = 0; this.changeFor = 0; this.dipped = false; }
     this.cur++;
     this.slide = { from: this.pos, to: 0, at: now };
   }
 
   private judge(n: RunNote, qualityOverride: number | null, now: number) {
+    // A note is judged by where it sat, not by every wobble: the centre of the sung pitch decides,
+    // and a regular sway of up to about half a semitone (vibrato) costs nothing.
+    n.cents = median(n.errs);
     let q: number;
-    if (qualityOverride !== null) q = qualityOverride;
+    if (n.errs.length >= 3) {
+      const centre = n.cents;
+      const spread = std(n.errs.map((e) => e - centre));
+      const consistency = Math.max(0, Math.min(1, 1 - Math.max(0, spread - 55) / 80));
+      const centreQ = this.frameQuality(centre);
+      const frameQ = qualityOverride ?? mean(n.errs.map((e) => this.frameQuality(e)));
+      q = Math.max(centreQ * consistency, frameQ * 0.6);
+      n.octave = Math.abs(Math.abs(centre) - 1200) <= this.diff.good;
+      if (n.octave) q = 0;
+    } else if (qualityOverride !== null) q = qualityOverride;
     else {
       let sum = 0, count = 0;
       for (let i = SETTLE_BINS; i < n.bins.length; i++) { sum += Math.max(0, n.bins[i]); count++; }
@@ -348,7 +425,6 @@ export class GameRun {
       q = sum / count;
     }
     n.quality = q;
-    n.cents = median(n.errs);
     n.offAt = now;
     if (n.onAt < 0) n.onAt = now;
     const j: Judgement = q >= 0.8 ? "perfect" : q >= 0.55 ? "great" : q >= 0.3 ? "good" : "miss";
@@ -379,7 +455,48 @@ export class GameRun {
     }
     const points = Math.round(NOTE_POINTS[j] * this.multiplier * (this.fever.active ? 2 : 1));
     this.score += points;
-    this.events.push({ type: "note", note: n, judgement: j, points, combo: this.combo, skipped: n.skipped });
+    this.events.push({ type: "note", note: n, judgement: j, points, combo: this.combo, skipped: n.skipped, octave: n.octave });
+    if (this.song.phraseEnds.includes(n.i)) this.judgePhrase(n.i);
+  }
+
+  /** Breath, attack, evenness and ending for the phrase that just finished. */
+  private judgePhrase(endIndex: number) {
+    const prevEnd = this.phrases.length ? this.phrases[this.phrases.length - 1].end : -1;
+    const first = this.notes.slice(prevEnd + 1, endIndex + 1).find((n) => n.onAt >= 0);
+    const last = this.notes[endIndex];
+    if (!first || last.offAt < 0) return;
+    const t0 = first.sungAt >= 0 ? first.sungAt : first.onAt, t1 = last.offAt;
+    const frames = this.log.filter((x) => x.t >= t0 && x.t <= t1);
+    const voiced = frames.filter((x) => x.voiced);
+    if (voiced.length < 6) return;
+
+    // Breaths: silences of a fifth of a second or more, not counting the edges.
+    let breaths = 0, gap = 0;
+    for (let i = 1; i < frames.length; i++) {
+      const dt = frames[i].t - frames[i - 1].t;
+      if (!frames[i].voiced) gap += dt;
+      else { if (gap >= 0.2 && frames[i].t - t0 > 0.15 && t1 - frames[i].t > 0.15) breaths++; gap = 0; }
+    }
+
+    // Attack: how fast the level arrives at the start of the phrase.
+    const head = voiced.filter((x) => x.t - voiced[0].t <= 0.3);
+    const peak = Math.max(...head.map((x) => x.db));
+    const rise = (head.find((x) => x.db >= peak - 3)?.t ?? voiced[0].t) - voiced[0].t;
+    const onset: Onset = rise < 0.035 && head.length > 2 ? "hard" : rise > 0.18 ? "breathy" : "clean";
+
+    // Evenness and ending.
+    const dbs = voiced.map((x) => x.db);
+    const evennessDb = std(dbs);
+    const tail = voiced.filter((x) => t1 - x.t <= 0.3);
+    const body = voiced.filter((x) => t1 - x.t > 0.3);
+    const faded = tail.length >= 3 && body.length >= 5 && mean(tail.map((x) => x.db)) < mean(body.map((x) => x.db)) - 6;
+    const tailCents = last.errs.slice(-Math.max(3, Math.floor(last.errs.length * 0.25)));
+    const sagged = tailCents.length >= 3 && !Number.isNaN(last.cents) && median(tailCents) - last.cents < -40;
+    const ending: Ending = sagged ? "sagged" : faded ? "faded" : "held";
+
+    const report: PhraseReport = { end: endIndex, breaths, onset, evennessDb, ending };
+    this.phrases.push(report);
+    this.events.push({ type: "phrase", report });
   }
 
   /** Summary for the results screen and the progress store. */
@@ -399,6 +516,8 @@ export class GameRun {
       fullCombo: this.counts.miss === 0 && sung.length === this.notes.length,
       counts: { ...this.counts },
       biasCents: bias,
+      octaves: this.notes.filter((n) => n.octave).length,
+      phrases: [...this.phrases],
       notes: this.notes.map((n) => ({ midi: n.midi, lyric: n.lyric, judged: n.judged ?? "miss", cents: n.cents, quality: n.quality })),
     };
   }
@@ -415,5 +534,7 @@ export interface RunSummary {
   fullCombo: boolean;
   counts: Record<Judgement, number>;
   biasCents: number;
+  octaves: number;
+  phrases: PhraseReport[];
   notes: { midi: number; lyric: string | null; judged: Judgement; cents: number; quality: number }[];
 }
