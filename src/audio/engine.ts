@@ -40,7 +40,7 @@ export class AudioEngine {
     if (w) { try { await w.release(); } catch { /* already gone */ } }
   }
   /** development only: a synthetic voice driven from the console instead of the microphone */
-  fake: { osc: OscillatorNode; gain: GainNode } | null = null;
+  fake: { osc: OscillatorNode; gain: GainNode; vowel: (f1: number, f2: number) => void } | null = null;
 
   onFrame(fn: Listener) {
     this.listeners.add(fn);
@@ -92,13 +92,18 @@ export class AudioEngine {
     osc.type = "sawtooth";
     osc.frequency.value = 220;
     gain.gain.value = 0;
-    osc.connect(gain).connect(this.analyser!);
+    // Two resonances so the synthetic voice can be given a vowel shape from the console.
+    const mix = ctx.createGain();
+    osc.connect(gain);
+    const res = [800, 1250].map((f) => { const b = ctx.createBiquadFilter(); b.type = "bandpass"; b.frequency.value = f; b.Q.value = 5; gain.connect(b).connect(mix); return b; });
+    const dry = ctx.createGain(); dry.gain.value = 0.15; gain.connect(dry).connect(mix);
+    mix.connect(this.analyser!);
     // Route it through a MediaStream too so recording works exactly as with a real microphone.
     const dest = ctx.createMediaStreamDestination();
-    gain.connect(dest);
+    mix.connect(dest);
     this.stream = dest.stream;
     osc.start();
-    this.fake = { osc, gain };
+    this.fake = { osc, gain, vowel: (f1, f2) => { res[0].frequency.value = f1; res[1].frequency.value = f2; } };
     this.source = gain;
     this.mode = "mic";
     this.loop();

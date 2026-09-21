@@ -34,7 +34,7 @@ export function buildPriorities(tracker: Tracker, scores: ExerciseScore[], cal: 
   if (spread > 18)
     out.push({
       title: "Steady the held notes",
-      evidence: `Held notes wandered by about ±${Math.round(spread)} cents. Under ±12 sounds settled.`,
+      evidence: `Held notes wandered rather than sitting still.`,
       drill: "Five minutes a day: hold one mid-range note for 8 to 10 seconds against a drone, watching the line stay flat. Keep the ribs wide as the air leaves.",
       severity: (spread - 10) / 8,
     });
@@ -45,9 +45,9 @@ export function buildPriorities(tracker: Tracker, scores: ExerciseScore[], cal: 
     if (Math.abs(bias) > 15)
       out.push({
         title: bias < 0 ? "You tend to sing flat" : "You tend to sing sharp",
-        evidence: `On average ${Math.round(Math.abs(bias))} cents ${bias < 0 ? "under" : "over"} the target.`,
+        evidence: `On average you sat ${Math.abs(bias) < 30 ? "a touch" : "noticeably"} ${bias < 0 ? "under" : "over"} the note.`,
         drill: bias < 0
-          ? "Flat singing usually means too little energy. Keep the soft palate lifted, sing at a confident volume, and think of placing each note from above."
+          ? "Sitting under the note usually means too little energy. Think of the start of a yawn to lift the roof of your mouth, sing at a confident volume, and place each note from above."
           : "Sharp singing usually means pushing. Ease the volume by a notch and let the breath, not the throat, carry the note.",
         severity: Math.abs(bias) / 15,
       });
@@ -57,7 +57,7 @@ export function buildPriorities(tracker: Tracker, scores: ExerciseScore[], cal: 
   if (long.length >= 3 && sagged / long.length >= 0.25)
     out.push({
       title: "Finish notes before the air runs out",
-      evidence: `${sagged} of ${long.length} longer notes wobbled or sagged in the last third of a second.`,
+      evidence: `${sagged} of ${long.length} longer notes sagged right at the end.`,
       drill: "End each note while it is still strong, with the ribs still open. Practise a long even hiss (20 to 30 seconds) to build the control.",
       severity: 1 + sagged / long.length,
     });
@@ -66,7 +66,7 @@ export function buildPriorities(tracker: Tracker, scores: ExerciseScore[], cal: 
   if (pump > 2.5)
     out.push({
       title: "Even out the volume",
-      evidence: `Volume moved about ±${pump.toFixed(1)} dB inside held notes. Under ±1.5 dB sounds controlled.`,
+      evidence: `The volume pumped up and down inside held notes.`,
       drill: "Sing one note through a straw or on a lip trill and keep the volume strip level. Then repeat on “ah”.",
       severity: (pump - 1.5) / 1.5,
     });
@@ -81,9 +81,9 @@ export function buildPriorities(tracker: Tracker, scores: ExerciseScore[], cal: 
 
   if (tracker.crackCount > 0)
     out.push({
-      title: "Smooth the register change",
+      title: "Smooth the switch between your low and high voice",
       evidence: `Your voice flipped abruptly ${tracker.crackCount} time${tracker.crackCount > 1 ? "s" : ""}.`,
-      drill: "Daily sirens on a straw or lip trill through the break, low to high and back. Also start light in head voice and slide down into chest.",
+      drill: "Daily sirens on a straw or lip trill through the switch, low to high and back. Also start light and high and slide down into your full low voice.",
       severity: 1.2 + tracker.crackCount * 0.3,
     });
 
@@ -91,8 +91,8 @@ export function buildPriorities(tracker: Tracker, scores: ExerciseScore[], cal: 
   const top = out.slice(0, 3);
   if (!tracker.notes.some((n) => n.wobble === "vibrato"))
     top.push({
-      title: "Vibrato can wait",
-      evidence: "No natural vibrato showed up in this session, which is normal at this stage.",
+      title: "The natural wobble can wait",
+      evidence: "No natural wobble (singers call it vibrato) showed up in this session, which is normal at this stage.",
       drill: cal ? "It tends to appear by itself once held notes are steady and relaxed. Work on the items above first." : "It tends to appear by itself once held notes are steady and relaxed.",
       severity: 0,
     });

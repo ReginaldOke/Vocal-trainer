@@ -8,6 +8,9 @@ export interface AvatarState {
   db: number;
   /** spectral tilt from the analyser: high means a dark, rounded vowel */
   h1h2: number;
+  /** first two resonances when known (0 otherwise): the beak opens with F1 and spreads with F2 */
+  f1: number;
+  f2: number;
   strain: number;
   /** 0..1 accuracy against the current target, 0 when there is none */
   q: number;
@@ -15,7 +18,7 @@ export interface AvatarState {
   floorDb: number;
 }
 
-export const EMPTY_AVATAR: AvatarState = { voiced: false, midi: NaN, db: -90, h1h2: 6, strain: 0, q: 0, fever: false, floorDb: -55 };
+export const EMPTY_AVATAR: AvatarState = { voiced: false, midi: NaN, db: -90, h1h2: 6, f1: 0, f2: 0, strain: 0, q: 0, fever: false, floorDb: -55 };
 
 const clamp = (n: number, a = 0, b = 1) => Math.max(a, Math.min(b, n));
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
@@ -204,7 +207,7 @@ export function SingerAvatar({ state, className }: { state: React.MutableRefObje
 
       const loud = s.voiced ? clamp((s.db - s.floorDb) / (-8 - s.floorDb)) : 0;
       const wantOpen = s.voiced ? 0.15 + 0.85 * Math.pow(loud, 0.8) : 0;
-      const wantBright = s.voiced ? clamp((12 - s.h1h2) / 14) : 0.5;
+      const wantBright = s.voiced ? (s.f2 > 0 ? clamp((Math.log(s.f2) - Math.log(800)) / (Math.log(2500) - Math.log(800))) : clamp((12 - s.h1h2) / 14)) : 0.5;
       const wantPitch = s.voiced && !Number.isNaN(s.midi) ? clamp((s.midi - 46) / 36) : 0.4;
       open = lerp(open, wantOpen, s.voiced ? 0.45 : 0.25);
       bright = lerp(bright, wantBright, 0.15);

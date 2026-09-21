@@ -45,14 +45,14 @@ export class Coach {
     } else this.strainSince = -1;
 
     for (const e of events) {
-      if (e.type === "crack") say("crack", "warn", "Your voice flipped registers. Approach the break more quietly and let the sound thin out.");
-      if (e.type === "scoop") say("scoop", "warn", `You slid up into that note over ${e.seconds.toFixed(1)}s. Hear the pitch first, then land on it.`);
+      if (e.type === "crack") say("crack", "warn", "Your voice flipped from its full sound to its light sound. Approach that switch more quietly and let the sound thin out.");
+      if (e.type === "scoop") say("scoop", "warn", "You slid up into that note. Hear it in your head first, then land on it.");
       if (e.type === "note-end") {
         const n = e.note, dur = n.end - n.start;
         if (n.endSag) say("end-sag", "warn", "The end of that note sagged as the air ran out. Keep your ribs wide and finish while the sound is still strong.");
         else if (dur > 1.2 && n.dbSlope < -5) say("fade", "info", "That note faded as it went. Spend the air evenly so the end is as full as the start.");
         else if (dur > 1 && n.dbStd > 3 && Math.abs(n.dbSlope) < 4) say("pump", "info", "The volume pumped up and down on that note. Aim for one even stream of air.");
-        if (n.wobble === "vibrato") say("vibrato", "good", `That was real vibrato, about ${n.vibratoRate.toFixed(1)} per second. Notice how relaxed that felt.`);
+        if (n.wobble === "vibrato") say("vibrato", "good", "That was a real, natural wobble in the note. Notice how relaxed that felt.");
         if (n.wobble === "slow-wobble") say("wobble", "warn", "A slow wobble crept in. That usually means too much push. Back the volume off a touch and keep the air moving.");
       }
     }
@@ -63,8 +63,8 @@ export class Coach {
       if (target !== null && held > 0.5 && n.start > f.t - targetSince - 0.2) {
         const err = foldedCents(n.median, target);
         if (Math.abs(err) > 150) say("wrong-note", "info", "That is a different note from the bar. Listen to the line once more, then try again.");
-        else if (err < -30) say("flat", "warn", `Flat by about ${Math.round(-err / 5) * 5} cents. Lift the soft palate and aim for the top of the note.`);
-        else if (err > 30) say("sharp", "warn", `Sharp by about ${Math.round(err / 5) * 5} cents. You are likely pushing. Ease the volume a little.`);
+        else if (err < -30) say("flat", "warn", `You are sitting ${err < -60 ? "well " : "a little "}under the note. Think of a yawn to lift the roof of your mouth and aim for the top of the note.`);
+        else if (err > 30) say("sharp", "warn", `You are pushing ${err > 60 ? "well " : "a little "}over the note. Ease the volume a touch and let it float down.`);
         else if (Math.abs(err) < 12 && s.steadiness < 12 && held > 1 && this.praisedNoteStart !== n.start) {
           this.praisedNoteStart = n.start;
           say("locked", "good", "Locked in. Remember how that feels.");

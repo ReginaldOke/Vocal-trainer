@@ -15,6 +15,9 @@ import { GameCanvas, type GameView } from "./GameCanvas";
 import { SingerAvatar, type AvatarState } from "./SingerAvatar";
 import { SettingsSheet } from "./SettingsSheet";
 import { SONG_ART } from "./songArt";
+import { offWords } from "../coach/words";
+import { GlideRun } from "../game/glide";
+import { backingFade, type LessonPlan, type LessonStep } from "../game/lesson";
 
 export interface ReviewTarget {
   midi: number;
@@ -29,7 +32,7 @@ interface Props {
   tracker: Tracker;
   coach: Coach;
   synth: GuideSynth | null;
-  calibrated: { low: number; high: number } | null;
+  calibrated: { low: number; high: number; comfort?: number } | null;
   avatar: React.MutableRefObject<AvatarState>;
   room: React.MutableRefObject<{ gate: number; noise: number }>;
   progress: Progress;
@@ -40,9 +43,13 @@ interface Props {
   /** play and results take the whole screen */
   onFocus: (focused: boolean) => void;
   onReview: (blob: Blob, targets: ReviewTarget[], title: string) => void;
+  /** a lesson to run step by step, instead of the song list */
+  lesson: LessonPlan | null;
+  onLessonDone: () => void;
 }
 
-type Phase = "select" | "play" | "results";
+type Phase = "select" | "play" | "results" | "glide" | "between" | "lesson-done";
+const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 /** A word about the phrase that just ended, when the coach had nothing more pressing to say. */
 function phraseTip(r: PhraseReport, t: number): Tip | null {
@@ -59,7 +66,7 @@ const Stars = ({ n, size = "" }: { n: number; size?: string }) => (
   <span className={`stars ${size}`} aria-label={`${n} of 5 stars`}>{[1, 2, 3, 4, 5].map((i) => <span key={i} data-on={i <= n}>★</span>)}</span>
 );
 
-export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview }: Props) {
+export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone }: Props) {
   const [phase, setPhase] = useState<Phase>("select");
   const [song, setSong] = useState<Song | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -67,9 +74,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   const [take, setTake] = useState<{ blob: Blob; targets: ReviewTarget[] } | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [tab, setTab] = useState<"song" | "drill">("song");
+  const [tab, setTab] = useState<"song" | "drill" | "ear">("song");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [custom, setCustom] = useState<Song[]>(() => loadCustomSongs());
+  const [stepIndex, setStepIndex] = useState(0);
+  const [stepResult, setStepResult] = useState<{ title: string; line: string; stars: number } | null>(null);
+  const [clock, setClock] = useState(0);
   const [importError, setImportError] = useState<string | null>(null);
 
   const importMidi = async (file: File) => {
@@ -103,6 +113,11 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     finishing: false,
     /** the most important coaching remark since the last phrase ended; shown when the phrase does */
     pending: null as Tip | null,
+    glide: null as GlideRun | null,
+    earKey: -2,
+    lessonStart: 0,
+    inLesson: false,
+    fade: 1,
   });
   G.current.progress = progress;
   const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
@@ -137,12 +152,15 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     g.buddy?.stop();
     synth?.stop();
     const s = run.summary();
-    const out = recordRun(g.progress, s, SONGS.filter((x) => x.kind === "drill").map((x) => x.id));
+    const out = recordRun(g.progress, s, SONGS.filter((x) => x.kind === "drill").map((x) => x.id), g.inLesson ? "lesson" : undefined);
     setSummary(s);
     setOutcome(out);
     onProgress({ ...g.progress });
     setTip(null);
-    setPhase("results");
+    if (g.inLesson) {
+      setStepResult({ title: run.song.song.title, line: s.stars ? `${Math.round(s.accuracy * 100)}% on the note, ${s.maxCombo} in a row` : "Nothing was picked up that time", stars: s.stars });
+      setPhase("between");
+    } else setPhase("results");
     const blob = await engine.stopRecording();
     if (blob) {
       const targets = run.notes.filter((n) => n.onAt >= 0).map((n) => ({ midi: n.midi, start: (n.sungAt >= 0 ? n.sungAt : n.onAt) - g.recStart, end: (n.offAt >= 0 ? n.offAt : n.onAt + 0.5) - g.recStart, lyric: n.lyric }));
@@ -161,9 +179,21 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
 
       const run = g.run;
       const a = avatar.current;
-      a.voiced = raw.voiced; a.midi = raw.midi; a.db = raw.db; a.h1h2 = raw.h1h2; a.floorDb = noise;
+      a.voiced = raw.voiced; a.midi = raw.midi; a.db = raw.db; a.h1h2 = raw.h1h2; a.f1 = raw.f1; a.f2 = raw.f2; a.floorDb = noise;
       a.q = run && !run.finished ? run.liveQ : 0;
       a.fever = !!run && run.fever.active;
+      if (g.inLesson && now - g.lastUi > 0.5) setClock(now - g.lessonStart);
+      const gl = g.glide;
+      if (gl && !gl.finished) {
+        gl.update(raw, now);
+        a.q = raw.voiced ? 0.7 : 0;
+        if (gl.finished) {
+          const sm = gl.summary();
+          setStepResult({ title: lessonStepTitle(), line: `${Math.round(sm.smoothness * 100)}% smooth, ${Math.round(sm.coverage * 100)}% of the range`, stars: sm.smoothness > 0.85 ? 3 : sm.smoothness > 0.6 ? 2 : 1 });
+          setPhase("between");
+        }
+        return;
+      }
       if (g.buddy?.running) g.buddy.update(raw.voiced, raw.voiced ? midiToHz(raw.midi) : 0, Math.max(0, Math.min(1, (raw.db - noise) / (-8 - noise))), Math.max(0, Math.min(1, (12 - raw.h1h2) / 14)));
       if (!run || run.finished) { a.strain = 0; return; }
 
@@ -184,7 +214,15 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       tracker.events = [];
       a.strain = live.strain;
       run.update(f, now);
-      backing?.setTarget(run.target ? run.target.midi : run.countIn(now) > 0 ? run.notes[0].midi : null, run.target ? run.target.i : "count-in");
+      const ear = run.song.song.ear;
+      if (ear) {
+        // Ear training: one cue when the note arrives, then silence while the singer answers.
+        const key = run.target ? run.target.i : -1;
+        if (key !== g.earKey) {
+          g.earKey = key;
+          if (run.target && backing) backing.cue(ear === "silent" ? null : ear === "interval" ? run.target.midi - (run.song.song.earInterval ?? 7) : run.target.midi);
+        }
+      } else backing?.setTarget(run.target ? run.target.midi : run.countIn(now) > 0 ? run.notes[0].midi : null, run.target ? run.target.i : "count-in");
 
       const target = run.target;
       const next = coach.update(live, tevents, target ? target.midi : null, target ? now - target.onAt : 0, noise);
@@ -217,6 +255,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
 
   useEffect(() => () => { G.current.backing?.stop(); G.current.buddy?.stop(); synth?.stop(); }, [synth]);
 
+  const lessonStepTitle = () => lesson?.steps[stepIndex]?.title ?? "";
+
   const play = useCallback((s: Song) => {
     const g = G.current;
     const st = g.progress.settings;
@@ -235,6 +275,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       g.backing.start();
       g.backing.setKey(prepared.tonic + (s.keyOffset ?? 0), s.mode === "minor" || s.id === "minor" ? "minor" : "major");
       g.backing.setStyle(st.backing);
+      g.fade = backingFade(g.progress, s.id);
+      g.backing.setFade(g.fade);
       // With headphones in tempo mode the whole melody plays; piano chords still fit under it.
       g.backing.setMode(st.mode === "tempo" && st.guide === "full" && st.backing === "tone" ? "off" : st.guide);
       if (st.mode === "tempo" && synth) {
@@ -246,6 +288,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     applyBuddyVoice(st.buddyVoice);
     if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing, __run: run, __recStart: now });
     g.recStart = engine.startRecording() ?? now;
+    g.earKey = -2;
     setSong(s);
     setSummary(null);
     setOutcome(null);
@@ -253,6 +296,45 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     setTip(null);
     setPhase("play");
   }, [engine, tracker, coach, synth, calibrated, applyBuddyVoice]);
+
+  const startStep = useCallback((i: number) => {
+    if (!lesson) return;
+    const g = G.current;
+    const step: LessonStep | undefined = lesson.steps[i];
+    setStepIndex(i);
+    setStepResult(null);
+    if (!step) {
+      g.inLesson = false;
+      g.progress.lessons.push(Date.now());
+      g.progress.xp += 100;
+      saveProgress(g.progress);
+      onProgress({ ...g.progress });
+      setPhase("lesson-done");
+      return;
+    }
+    if (step.kind === "glide") {
+      g.run = null;
+      view.current.run = null;
+      g.glide = new GlideRun(step.glide, engine.now());
+      view.current.glide = g.glide;
+      g.backing?.setTarget(null);
+      setPhase("glide");
+    } else {
+      g.glide = null;
+      view.current.glide = null;
+      play(step.song);
+    }
+  }, [lesson, engine, play, onProgress]);
+
+  useEffect(() => {
+    if (!lesson) return;
+    const g = G.current;
+    g.inLesson = true;
+    g.lessonStart = engine.now();
+    setClock(0);
+    startStep(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson]);
 
   useEffect(() => {
     if (autoplay) { play(autoplay); onAutoplayed(); }
@@ -262,6 +344,9 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     const g = G.current;
     g.run = null;
     view.current.run = null;
+    g.glide = null;
+    view.current.glide = null;
+    if (g.inLesson) { g.inLesson = false; setPhase("select"); onLessonDone(); return; }
     g.backing?.setTarget(null);
     g.buddy?.stop();
     synth?.stop();
@@ -270,17 +355,75 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     setPhase("select");
   };
 
+  const section = lesson ? [...lesson.sections].reverse().find((sec) => sec.at <= stepIndex)?.title : null;
+  const lessonBar = lesson ? <span className="pill">{fmtClock(clock)} · {section}</span> : null;
+
+  if (phase === "glide" && lesson) {
+    const step = lesson.steps[stepIndex];
+    return (
+      <main className="arcade-play">
+        <div className="play-bar">
+          <strong>{step.title}</strong>
+          {lessonBar}
+          <button className="small" onClick={() => { G.current.glide = null; view.current.glide = null; startStep(stepIndex + 1); }}>Skip</button>
+        </div>
+        <div className="stage-wrap">
+          <GameCanvas view={view} />
+          <div className="tip-toast" data-tone="info"><span className="tip-mark" />{step.instruction}</div>
+          <aside className="buddy-panel">
+            <SingerAvatar state={avatar} />
+            <div className="buddy-plate">Pip</div>
+          </aside>
+        </div>
+      </main>
+    );
+  }
+
+  if (phase === "between" && lesson && stepResult) {
+    const next = lesson.steps[stepIndex + 1];
+    return (
+      <main className="page lesson-between">
+        <p className="eyebrow">{section} · {fmtClock(clock)}</p>
+        <h1>{stepResult.title}</h1>
+        <p className="stars big" aria-label={`${stepResult.stars} stars`}>{[1, 2, 3].map((i) => <span key={i} data-on={i <= stepResult.stars}>★</span>)}</p>
+        <p className="fine">{stepResult.line}</p>
+        {tip && <div className="tip" data-tone={tip.tone}><span className="tip-mark" /><p>{tip.text}</p></div>}
+        <div className="actions">
+          <button className="primary big" onClick={() => startStep(stepIndex + 1)}>{next ? `Next: ${next.title}` : "Finish lesson"}</button>
+          <button className="ghost" onClick={quit}>Stop here</button>
+        </div>
+      </main>
+    );
+  }
+
+  if (phase === "lesson-done" && lesson) {
+    return (
+      <main className="page lesson-between">
+        <p className="eyebrow">Lesson done</p>
+        <h1>That's today's singing</h1>
+        <p className="fine">{fmtClock(clock)} of focused work on {lesson.focus.toLowerCase()}. Rest the voice, drink some water, and come back tomorrow.</p>
+        <p className="badges"><span className="badge gold">+100 XP</span><span className="badge">{progress.lessons.length} lessons</span></p>
+        <div className="actions">
+          <button className="primary big" onClick={() => { setPhase("select"); onLessonDone(); }}>Done</button>
+        </div>
+      </main>
+    );
+  }
+
   if (phase === "play" && song) {
+    const step = lesson?.steps[stepIndex];
     return (
       <main className="arcade-play">
         <div className="play-bar">
           <strong>{song.title}</strong>
-          <span>{difficultyById(settings.difficulty).label}</span>
+          {lessonBar ?? <span>{difficultyById(settings.difficulty).label}</span>}
+          {G.current.fade < 1 && <span className="pill teal">{G.current.fade === 0 ? "From memory" : `Backing ${Math.round(G.current.fade * 100)}%`}</span>}
           <button className="small" onClick={quit}>Quit</button>
         </div>
         <div className="stage-wrap">
           <GameCanvas view={view} />
-          {tip && <div className="tip-toast" data-tone={tip.tone} role="status"><span className="tip-mark" />{tip.text}</div>}
+          {tip ? <div className="tip-toast" data-tone={tip.tone} role="status"><span className="tip-mark" />{tip.text}</div>
+            : step && step.kind === "song" && <div className="tip-toast" data-tone="info"><span className="tip-mark" />{step.instruction}</div>}
           <aside className="buddy-panel">
             <SingerAvatar state={avatar} />
             <div className="buddy-plate">Pip</div>
@@ -297,7 +440,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     const bias = summary.biasCents;
     const notes: string[] = [];
     if (summary.stars === 0) notes.push("No singing was picked up. Sing out at a confident, speech-level volume.");
-    else if (Math.abs(bias) >= 15) notes.push(bias < 0 ? `You sat under the note by about ${Math.round(-bias)} cents. Think of placing each note from above.` : `You pushed over the note by about ${Math.round(bias)} cents. Ease the volume a touch.`);
+    else if (Math.abs(bias) >= 15) notes.push(bias < 0 ? `You tended to sit under the note. Think of placing each note from above.` : `You tended to push over the note. Ease the volume a touch.`);
     else if (summary.counts.miss >= summary.notes.length * 0.3) notes.push("A few notes got away. Try Easy, or turn the guide tone up.");
     else if (summary.stars >= 4 && settings.difficulty !== "pro") notes.push(`Clean. Try ${settings.difficulty === "easy" ? "Medium" : settings.difficulty === "medium" ? "Hard" : "Pro"} next.`);
     else notes.push("Centred and relaxed. Keep that feeling.");
@@ -306,6 +449,9 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     const hard = ph.filter((p) => p.onset === "hard").length, breathy = ph.filter((p) => p.onset === "breathy").length;
     const held = ph.filter((p) => p.ending === "held").length, faded = ph.filter((p) => p.ending === "faded").length, sagged = ph.filter((p) => p.ending === "sagged").length;
     const evenness = ph.length ? [...ph.map((p) => p.evennessDb)].sort((a, b) => a - b)[ph.length >> 1] : NaN;
+    if (summary.vowels) notes.push(summary.vowels.matched === summary.vowels.total ? "Every vowel read as the one asked for. The shapes are clear." : `${summary.vowels.matched} of ${summary.vowels.total} vowels read as the one asked for. Exaggerate the shape: a tall “ah”, a smile for “ee”, a small round “oo”.`);
+    if (G.current.fade === 0) notes.push("That was from memory, with no backing at all. Your inner ear is doing the work now.");
+    else if (G.current.fade < 1) notes.push(`The backing was turned down to ${Math.round(G.current.fade * 100)}% because you have sung this cleanly before. It fades further as you go.`);
     if (summary.octaves > 0) notes.push(summary.octaves === 1 ? "One note was the right note an octave away. Listen for how high or low the tune sits before you start." : `${summary.octaves} notes were the right notes an octave away. Listen for how high the tune sits before you start.`);
     if (ph.length >= 2 && oneBreath / ph.length < 0.6) notes.push("Most phrases took more than one breath. Take a fuller breath at each phrase start and spend it slowly.");
     else if (hard >= 2) notes.push("Several phrases started with a click. Begin on the breath, as if the vowel had an h in front.");
@@ -337,11 +483,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <div className="stat"><span>Great</span><strong className="c-great">{summary.counts.great}</strong></div>
           <div className="stat"><span>Good</span><strong className="c-good">{summary.counts.good}</strong></div>
           <div className="stat"><span>Miss</span><strong className="c-miss">{summary.counts.miss}</strong></div>
+          {summary.vowels && <div className="stat"><span>Vowels</span><strong className={summary.vowels.matched === summary.vowels.total ? "c-great" : ""}>{summary.vowels.matched}/{summary.vowels.total}</strong></div>}
         </section>
 
         <section className="note-strip" aria-label="Note by note">
           {summary.notes.map((n, k) => (
-            <span key={k} className="note-chip" data-j={n.judged} title={`${n.lyric ?? noteName(n.midi)}: ${n.judged}${Number.isNaN(n.cents) ? "" : `, ${Math.round(n.cents)} cents`}`} style={{ height: `${30 + n.quality * 70}%` }} />
+            <span key={k} className="note-chip" data-j={n.judged} title={`${n.lyric ?? noteName(n.midi)}: ${n.judged}, ${offWords(n.cents)}`} style={{ height: `${30 + n.quality * 70}%` }} />
           ))}
         </section>
 
@@ -365,7 +512,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <ul>{notes.map((t) => <li key={t}>{t}</li>)}</ul>
           {trouble.length > 0 && (
             <p className="fine" style={{ marginTop: "0.5rem" }}>
-              Work on: {trouble.map((n) => `${n.lyric?.replace(/-$/, "") || noteName(n.midi)} (${noteName(n.midi)}${Number.isNaN(n.cents) ? "" : `, ${Math.abs(Math.round(n.cents))}¢ ${n.cents < 0 ? "flat" : "sharp"}`})`).join(", ")}.
+              Work on: {trouble.map((n) => `${n.lyric?.replace(/-$/, "") || noteName(n.midi)} (${noteName(n.midi)}, ${offWords(n.cents)})`).join(", ")}.
             </p>
           )}
         </section>
@@ -384,11 +531,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   return (
     <main className="page">
       <div className="page-head">
-        <h1>{tab === "song" ? "Songs" : "Drills"}</h1>
+        <h1>{tab === "song" ? "Songs" : tab === "drill" ? "Drills" : "Ear"}</h1>
         <div className="actions">
           <div className="segmented" role="tablist">
             <button role="tab" aria-selected={tab === "song"} onClick={() => setTab("song")}>Songs</button>
             <button role="tab" aria-selected={tab === "drill"} onClick={() => setTab("drill")}>Drills</button>
+            <button role="tab" aria-selected={tab === "ear"} onClick={() => setTab("ear")}>Ear</button>
           </div>
           <button className="small" onClick={() => setSettingsOpen(true)}>Settings</button>
         </div>

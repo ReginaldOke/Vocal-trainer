@@ -3,6 +3,7 @@ import { guessVoiceType } from "../coach/voiceType";
 import type { Priority } from "../coach/report";
 import { ACHIEVEMENTS, levelFromXp, type Progress } from "../game/progress";
 import { RangeCompare } from "./RangeCompare";
+import { accuracyByDay, weeklyPlan } from "../game/plan";
 
 interface Props {
   progress: Progress;
@@ -21,6 +22,13 @@ export function You({ progress, cal, priorities, onAssess, onSettings }: Props) 
   const stars = Object.values(progress.best).reduce((s, b) => s + b.stars, 0);
   const unlocked = Object.keys(progress.achievements).length;
   const vt = cal ? guessVoiceType(cal.low, cal.high) : null;
+  const plan = weeklyPlan(progress);
+  const days = accuracyByDay(progress, 28);
+  const sung = days.filter((d) => !Number.isNaN(d.accuracy));
+  const W = 560, H = 120, pad = 8;
+  const px = (i: number) => pad + (i / (days.length - 1)) * (W - 2 * pad);
+  const py = (a: number) => H - pad - a * (H - 2 * pad);
+  const path = sung.map((d, k) => `${k ? "L" : "M"}${px(days.indexOf(d)).toFixed(1)},${py(d.accuracy).toFixed(1)}`).join(" ");
   return (
     <main className="page">
       <div className="page-head">
@@ -68,6 +76,34 @@ export function You({ progress, cal, priorities, onAssess, onSettings }: Props) 
             <button className="primary" onClick={onAssess}>Assess my voice</button>
           </div>
         )}
+      </section>
+
+      <section className="card">
+        <div className="page-head" style={{ marginBottom: "0.6rem" }}>
+          <h2>This week</h2>
+          <span className="pill">{plan.reduce((s, i) => s + Math.min(i.done, i.goal), 0)}/{plan.reduce((s, i) => s + i.goal, 0)} done</span>
+        </div>
+        <ul className="plan">
+          {plan.map((i) => (
+            <li key={i.id} data-done={i.done >= i.goal}>
+              <span className="plan-check" aria-hidden="true">{i.done >= i.goal ? "✓" : `${Math.min(i.done, i.goal)}/${i.goal}`}</span>
+              <div><strong>{i.title}</strong><span className="fine">{i.why}</span></div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="card">
+        <div className="page-head" style={{ marginBottom: "0.4rem" }}>
+          <h2>Last four weeks</h2>
+          <span className="fine">{sung.length ? `${progress.history.filter((r) => Date.now() - r.at < 28 * 24 * 3600e3).length} takes` : "No takes yet"}</span>
+        </div>
+        <svg className="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Accuracy over the last four weeks">
+          {[0.25, 0.5, 0.75, 1].map((a) => <line key={a} x1={pad} x2={W - pad} y1={py(a)} y2={py(a)} stroke="currentColor" strokeOpacity={a === 1 ? 0.25 : 0.1} />)}
+          {sung.length > 1 && <path d={path} fill="none" stroke="var(--teal)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
+          {sung.map((d) => <circle key={d.day} cx={px(days.indexOf(d))} cy={py(d.accuracy)} r={3.5} fill="var(--gold)" />)}
+        </svg>
+        <div className="range-legend"><span>4 weeks ago</span><span>on the note</span><span>today</span></div>
       </section>
 
       <section className="badges-list">

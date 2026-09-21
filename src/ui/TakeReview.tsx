@@ -5,6 +5,7 @@ import { analyseInWorker, decodeClip } from "../audio/offline";
 import { isBlackKey, noteName } from "../audio/pitch";
 import { foldedCents } from "../coach/rules";
 import type { ReviewTarget } from "./GameScreen";
+import { offWords } from "../coach/words";
 
 interface Props {
   blob: Blob;
@@ -443,7 +444,7 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
               <span className="fine">Scroll to zoom, drag to pan, click to seek. Pinch on touch.</span>
             </div>
             <div className="legend">
-              <span><i style={{ background: "var(--ok)" }} /> in tune (±{GOOD}¢)</span>
+              <span><i style={{ background: "var(--ok)" }} /> on the note</span>
               <span><i style={{ background: "var(--warn)" }} /> close</span>
               <span><i style={{ background: "var(--bad)" }} /> pitchy</span>
               <span><i className="thick" /> thicker = louder</span>
@@ -454,7 +455,7 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
             <canvas ref={canvasRef} className="review-canvas" role="img" aria-label="Pitch over time, coloured by accuracy and thickened by volume" />
             {hover && (
               <div className="review-tip" style={{ left: `${44 + (hover.t - Z.current.left) / Z.current.spp}px` }}>
-                <strong>{noteName(hover.midi)}</strong> {hover.err > 0 ? "+" : ""}{Math.round(hover.err)}¢ · {Math.round(hover.db)} dB · {fmtT(hover.t)}
+                <strong>{noteName(hover.midi)}</strong> {offWords(hover.err)} · {fmtT(hover.t)}
               </div>
             )}
           </div>
@@ -465,8 +466,8 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
             <div className="stat"><span>In tune</span><strong className="c-great">{Math.round(stats.pct[0])}%</strong></div>
             <div className="stat"><span>Close</span><strong className="c-good">{Math.round(stats.pct[1])}%</strong></div>
             <div className="stat"><span>Pitchy</span><strong className="c-miss">{Math.round(stats.pct[2])}%</strong></div>
-            <div className="stat"><span>Average miss</span><strong>{Number.isNaN(stats.meanAbs) ? "–" : `${Math.round(stats.meanAbs)}¢`}</strong></div>
-            <div className="stat"><span>Tendency</span><strong>{Number.isNaN(stats.bias) ? "–" : Math.abs(stats.bias) < 8 ? "centred" : `${Math.round(Math.abs(stats.bias))}¢ ${stats.bias < 0 ? "flat" : "sharp"}`}</strong></div>
+            <div className="stat"><span>Typical miss</span><strong>{Number.isNaN(stats.meanAbs) ? "–" : stats.meanAbs < 15 ? "tiny" : stats.meanAbs < 35 ? "small" : "large"}</strong></div>
+            <div className="stat"><span>Tendency</span><strong>{Number.isNaN(stats.bias) ? "–" : Math.abs(stats.bias) < 8 ? "centred" : stats.bias < 0 ? "under" : "over"}</strong></div>
             <div className="stat"><span>Sung</span><strong>{stats.sung.toFixed(1)}s of {stats.duration.toFixed(1)}s</strong></div>
           </section>
 
@@ -479,7 +480,7 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
                 {stats.spots.map((s) => (
                   <li key={s.t0}>
                     <button onClick={() => jumpTo(s)}>
-                      <strong>{fmtT(s.t0)}</strong> {(s.t1 - s.t0).toFixed(1)}s, about {Math.round(Math.abs(s.err))}¢ {s.err < 0 ? "flat" : "sharp"}
+                      <strong>{fmtT(s.t0)}</strong> {(s.t1 - s.t0).toFixed(1)}s, {offWords(s.err)}
                     </button>
                   </li>
                 ))}

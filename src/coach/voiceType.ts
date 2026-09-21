@@ -24,7 +24,7 @@ export function guessVoiceType(low: number, high: number): VoiceTypeGuess {
   const close = second.cost - first.cost < 1.5;
   return {
     label: close ? `${first.t.name} or ${second.t.name.toLowerCase()}` : first.t.name,
-    note: `Based on a comfortable range of ${noteName(low)} to ${noteName(high)}. Range is only a hint: where your voice sits most easily and where it changes register decide the real answer.`,
+    note: `Based on a comfortable range of ${noteName(low)} to ${noteName(high)}. Range is only a hint: where your voice sits most easily and where it switches from full to light decide the real answer.`,
   };
 }
 

@@ -1,5 +1,6 @@
 import { PitchDetector, hzToMidi } from "./pitch";
 import { Spectrum, voiceQuality } from "./spectrum";
+import { FormantTracker, classifyVowel, type Vowel } from "./formants";
 
 export interface Frame {
   /** seconds since the session started */
@@ -12,6 +13,12 @@ export interface Frame {
   db: number;
   h1h2: number;
   weight: number;
+  /** first two vocal-tract resonances in Hz, 0 when not found */
+  f1: number;
+  f2: number;
+  /** the nearest vowel to those resonances and how sure that is */
+  vowel: Vowel | null;
+  vowelConf: number;
 }
 
 export const BUFFER_SIZE = 4096;
@@ -20,6 +27,7 @@ export const BUFFER_SIZE = 4096;
 export class FrameAnalyser {
   private pitch: PitchDetector;
   private spec: Spectrum;
+  private formants: FormantTracker;
   private last: number[] = [];
   /** dBFS below which input is treated as silence. Set from the mic check. */
   gateDb = -55;
@@ -27,6 +35,7 @@ export class FrameAnalyser {
   constructor(sampleRate: number) {
     this.pitch = new PitchDetector(sampleRate);
     this.spec = new Spectrum(BUFFER_SIZE, sampleRate);
+    this.formants = new FormantTracker(sampleRate);
   }
 
   analyse(buf: Float32Array, t: number): Frame {
@@ -36,7 +45,7 @@ export class FrameAnalyser {
     for (let i = buf.length - tail; i < buf.length; i++) sq += buf[i] * buf[i];
     const db = 10 * Math.log10(sq / tail + 1e-12);
 
-    const frame: Frame = { t, voiced: false, midi: NaN, clarity: 0, db, h1h2: 0, weight: 0 };
+    const frame: Frame = { t, voiced: false, midi: NaN, clarity: 0, db, h1h2: 0, weight: 0, f1: 0, f2: 0, vowel: null, vowelConf: 0 };
     if (db < this.gateDb) {
       this.last.length = 0;
       this.pitch.reset();
@@ -63,6 +72,14 @@ export class FrameAnalyser {
     frame.midi = midi;
     frame.h1h2 = q.h1h2;
     frame.weight = q.weight;
+    const fm = this.formants.estimate(buf);
+    if (fm) {
+      frame.f1 = fm.f1;
+      frame.f2 = fm.f2;
+      const v = classifyVowel(fm);
+      frame.vowel = v.vowel;
+      frame.vowelConf = v.confidence;
+    }
     return frame;
   }
 }

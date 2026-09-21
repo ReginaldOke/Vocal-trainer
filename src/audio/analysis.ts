@@ -7,6 +7,8 @@ export interface Calibration {
   /** lowest and highest comfortable notes (MIDI) from the range exercise */
   low: number;
   high: number;
+  /** where the voice sits most easily (MIDI): the notes the singer started their slides on */
+  comfort?: number;
   /** typical harmonic "weight" of this singer's low chest voice, in dB */
   chestWeight: number;
   /** quietest room level seen in the mic check, dBFS */

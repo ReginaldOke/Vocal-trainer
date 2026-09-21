@@ -2,6 +2,7 @@ import { noteName } from "../audio/pitch";
 import type { Register } from "../audio/analysis";
 import { VOICE_BANDS } from "../coach/voiceType";
 import type { Tip } from "../coach/rules";
+import { offWords, steadyWords } from "../coach/words";
 
 export interface Readout {
   voiced: boolean;
@@ -29,26 +30,26 @@ export function NoteReadout({ r }: { r: Readout }) {
           <div className="tuner-needle" data-state={state} style={{ left: `${50 + cents}%`, opacity: r.voiced ? 1 : 0.25 }} />
         </div>
       </div>
-      <p className="cents">{r.voiced ? `${r.cents > 0 ? "+" : ""}${Math.round(r.cents)} cents` : "Sing a note"}</p>
+      <p className="cents">{r.voiced ? offWords(r.cents) : "Sing a note"}</p>
     </section>
   );
 }
 
-const steadinessWord = (c: number) => (Number.isNaN(c) ? "Hold a note to measure" : c < 10 ? "Very steady" : c < 18 ? "Steady" : c < 30 ? "Wavering" : "Wandering");
+const steadinessWord = (c: number) => (Number.isNaN(c) ? "Hold a note to measure" : steadyWords(c).replace(/^\w/, (m) => m.toUpperCase()));
 
 export function Meters({ r }: { r: Readout }) {
   const steadyPct = Number.isNaN(r.steadiness) ? 0 : Math.max(4, 100 - Math.min(100, r.steadiness * 2.2));
   return (
     <section className="meters">
       <div className="meter">
-        <div className="meter-head"><span>Steadiness</span><span>{Number.isNaN(r.steadiness) ? "" : `±${Math.round(r.steadiness)} cents`}</span></div>
+        <div className="meter-head"><span>Steadiness</span><span>{steadyWords(r.steadiness)}</span></div>
         <div className="bar"><div className="bar-fill" data-state={r.steadiness < 18 ? "ok" : r.steadiness < 30 ? "warn" : "bad"} style={{ width: `${steadyPct}%` }} /></div>
         <p className="meter-note">{steadinessWord(r.steadiness)}</p>
       </div>
       <div className="meter">
-        <div className="meter-head"><span>Register (estimate)</span></div>
+        <div className="meter-head"><span>Voice (a guess)</span></div>
         <div className="register" data-register={r.voiced ? r.register : "unknown"}>
-          {(["chest", "mix", "head"] as const).map((k) => <span key={k} data-on={r.voiced && r.register === k}>{k}</span>)}
+          {([["chest", "full"], ["mix", "blended"], ["head", "light"]] as const).map(([k, word]) => <span key={k} data-on={r.voiced && r.register === k}>{word}</span>)}
         </div>
       </div>
       <div className="meter">
@@ -84,7 +85,7 @@ export function RangeBar({ low, high, current }: { low: number; high: number; cu
         {current !== null && <div className="range-now" style={{ left: pct(Math.max(lo, Math.min(hi, current))) }} />}
       </div>
       <div className="range-legend"><span>C2</span><span>C3</span><span>C4</span><span>C5</span><span>C6</span></div>
-      <p className="meter-note">Grey lines, top to bottom: typical bass, baritone, tenor, alto, mezzo and soprano ranges.</p>
+      <p className="meter-note">Grey lines, top to bottom: typical ranges from the lowest voices to the highest.</p>
     </section>
   );
 }

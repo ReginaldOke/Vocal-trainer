@@ -12,4 +12,11 @@ export const SONG_ART: Record<string, { emoji: string; tint: "peach" | "gold" | 
   octave: { emoji: "🎹", tint: "gold" },
   arpeggio: { emoji: "🎼", tint: "violet" },
   minor: { emoji: "🎼", tint: "blue" },
+  "vowel-shapes": { emoji: "👄", tint: "peach" },
+  "vowel-top": { emoji: "🏔️", tint: "violet" },
+  "ear-match": { emoji: "👂", tint: "teal" },
+  "ear-third": { emoji: "👂", tint: "blue" },
+  "ear-fifth": { emoji: "👂", tint: "violet" },
+  "ear-octave": { emoji: "👂", tint: "gold" },
+  "ear-silent": { emoji: "🧠", tint: "peach" },
 };

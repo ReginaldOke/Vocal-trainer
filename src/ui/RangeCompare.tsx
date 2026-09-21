@@ -20,7 +20,7 @@ export function RangeCompare({ low, high, compact = false }: { low: number; high
       <div className="compare-head">
         <p className="eyebrow">Your voice</p>
         <h2>You're {article} {vt.label.toLowerCase()} 🎉</h2>
-        <p className="fine">{noteName(low)} to {noteName(high)} · {Math.round(high - low)} semitones comfortable. {vt.note}</p>
+        <p className="fine">{noteName(low)} to {noteName(high)} · {Math.round(high - low)} notes wide, comfortably. {vt.note}</p>
       </div>
 
       <div className="compare-matches">
@@ -49,7 +49,7 @@ export function RangeCompare({ low, high, compact = false }: { low: number; high
               </span>
             </div>
           ))}
-          <p className="fine">Singers' ranges are the widely reported extremes from recordings, falsetto and all. Yours is your comfortable range, so it reads narrower.</p>
+          <p className="fine">Singers' ranges are the widely reported extremes from recordings, their lightest and squeakiest notes included. Yours is your comfortable range, so it reads narrower.</p>
         </div>
       )}
     </section>

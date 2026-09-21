@@ -25,9 +25,30 @@ export interface Settings {
   buddyVoice: boolean;
 }
 
+/** One finished take, kept so progress can be charted and lessons planned. */
+export interface RunRecord {
+  at: number;
+  songId: string;
+  difficulty: Settings["difficulty"];
+  accuracy: number;
+  score: number;
+  stars: number;
+  biasCents: number;
+  /** fraction of phrases sung in one breath (1 when the take had no phrases) */
+  oneBreath: number;
+  /** "lesson" when sung inside a lesson */
+  context?: "lesson";
+}
+
 export interface Progress {
   xp: number;
   plays: number;
+  /** finished takes, newest last, capped */
+  history: RunRecord[];
+  /** clean runs (80%+ accuracy) per song, used to fade the backing */
+  cleanReps: Record<string, number>;
+  /** lessons finished, with their dates */
+  lessons: number[];
   /** keyed by `${songId}:${difficulty}` */
   best: Record<string, Best>;
   /** achievement id -> unlock time */
@@ -59,6 +80,9 @@ const KEY = "vocal-coach.progress.v1";
 const DEFAULT: Progress = {
   xp: 0,
   plays: 0,
+  history: [],
+  cleanReps: {},
+  lessons: [],
   best: {},
   achievements: {},
   settings: { difficulty: "medium", mode: "flow", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false },
@@ -100,8 +124,12 @@ export interface RecordOutcome {
 }
 
 /** Fold one finished take into the saved progress. */
-export function recordRun(p: Progress, s: RunSummary, drillIds: string[]): RecordOutcome {
+export function recordRun(p: Progress, s: RunSummary, drillIds: string[], context?: "lesson"): RecordOutcome {
   const key = bestKey(s.songId, s.difficulty);
+  const oneBreath = s.phrases.length ? s.phrases.filter((ph) => ph.breaths === 0).length / s.phrases.length : 1;
+  p.history.push({ at: Date.now(), songId: s.songId, difficulty: s.difficulty, accuracy: s.accuracy, score: s.score, stars: s.stars, biasCents: s.biasCents, oneBreath, context });
+  if (p.history.length > 500) p.history.splice(0, p.history.length - 500);
+  if (s.accuracy >= 0.8) p.cleanReps[s.songId] = (p.cleanReps[s.songId] ?? 0) + 1;
   const prev = p.best[key];
   const firstClear = !prev && s.stars > 0;
   const newBest = s.stars > 0 && (!prev || s.score > prev.score);

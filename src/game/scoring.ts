@@ -40,6 +40,9 @@ export interface RunNote extends PreparedNote {
   octave: boolean;
   /** flow mode: what ended the note (for tuning) */
   endedBy: string;
+  /** vowel drills: frames whose vowel matched the lyric, and frames judged */
+  vowelHits: number;
+  vowelN: number;
   /** flow mode: seconds of on-pitch singing banked so far, seconds sung at any pitch, and how many are needed */
   held: number;
   sung: number;
@@ -163,7 +166,7 @@ export class GameRun {
     this.notes = song.notes.map((n) => ({
       ...n,
       bins: new Float32Array(Math.max(1, Math.ceil(n.dur / BIN))).fill(-1),
-      judged: null, quality: 0, cents: NaN, errs: [], octave: false, endedBy: "", held: 0, sung: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
+      judged: null, quality: 0, cents: NaN, errs: [], octave: false, endedBy: "", vowelHits: 0, vowelN: 0, held: 0, sung: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
       need: Math.max(0.3, Math.min(4, n.dur * 0.75)),
     }));
     this.pos = mode === "flow" ? song.notes[0].start : 0;
@@ -355,7 +358,10 @@ export class GameRun {
         q = this.frameQuality(err);
         this.qSum += q;
         this.qN++;
-        if (note.sung > 0.12) note.errs.push(err);
+        if (note.sung > 0.12) {
+          note.errs.push(err);
+          if (this.song.song.vowels && f.vowel && f.vowelConf > 0.3) { note.vowelN++; if (f.vowel === note.lyric) note.vowelHits++; }
+        }
         if (q > 0) {
           if (note.sungAt < 0) note.sungAt = now;
           note.held += dt;
@@ -517,6 +523,7 @@ export class GameRun {
       counts: { ...this.counts },
       biasCents: bias,
       octaves: this.notes.filter((n) => n.octave).length,
+      vowels: this.song.song.vowels ? { matched: this.notes.filter((n) => n.vowelN >= 5 && n.vowelHits / n.vowelN >= 0.5).length, total: this.notes.length } : null,
       phrases: [...this.phrases],
       notes: this.notes.map((n) => ({ midi: n.midi, lyric: n.lyric, judged: n.judged ?? "miss", cents: n.cents, quality: n.quality })),
     };
@@ -535,6 +542,7 @@ export interface RunSummary {
   counts: Record<Judgement, number>;
   biasCents: number;
   octaves: number;
+  vowels: { matched: number; total: number } | null;
   phrases: PhraseReport[];
   notes: { midi: number; lyric: string | null; judged: Judgement; cents: number; quality: number }[];
 }

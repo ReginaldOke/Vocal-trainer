@@ -18,6 +18,8 @@ export class Backing {
   private singing = false;
   private level = 0.55;
   private lastPulse = -10;
+  /** 0..1 scaffolding: 1 is full support, 0 is silence (sing it from memory) */
+  fade = 1;
   style: BackingStyle = "piano";
   mode: GuideMode = "quiet";
   tonic = 60;
@@ -35,9 +37,15 @@ export class Backing {
   }
 
   private pianoLevel() {
-    if (this.mode === "off" || this.target === null) return 0;
-    const base = this.mode === "full" ? 0.9 : this.level;
+    if (this.mode === "off" || this.target === null || this.fade <= 0) return 0;
+    const base = (this.mode === "full" ? 0.9 : this.level) * this.fade;
     return this.singing ? base * 0.3 : base;
+  }
+
+  setFade(fade: number) {
+    this.fade = Math.max(0, Math.min(1, fade));
+    this.guide.setMode(this.style === "tone" && this.fade > 0 ? this.mode : "off");
+    this.apply();
   }
 
   private apply() {
@@ -50,10 +58,20 @@ export class Backing {
   setKey(tonic: number, chordMode: ChordMode) { this.tonic = tonic; this.chordMode = chordMode; this.chord = null; }
 
   private strike(velocity: number) {
-    if (this.target === null || this.mode === "off") return;
+    if (this.target === null || this.mode === "off" || this.fade <= 0) return;
     this.chord = chordFor(this.target, this.tonic, this.chordMode, this.chord);
     this.piano.strike(voiceChord(this.chord, this.target, this.tonic), velocity);
     this.lastPulse = this.ctx.currentTime;
+  }
+
+  /** Ear training: play one note once, then stay silent. No chord, no pulse, no following tone. */
+  cue(midi: number | null) {
+    this.target = null;
+    this.targetKey = "";
+    this.guide.setNote(null);
+    this.piano.setLevel(this.mode === "full" ? 0.9 : Math.max(0.3, this.level), 0.02);
+    if (midi !== null && this.mode !== "off") this.piano.strike([midi], 0.8);
+    this.lastPulse = this.ctx.currentTime + 1e6; // never pulse
   }
 
   /** Call whenever the note the singer should be on changes (or becomes null between phrases). `id` lets a repeated pitch strike again. */

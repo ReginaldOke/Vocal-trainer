@@ -20,6 +20,7 @@ interface Props {
   avatar: React.MutableRefObject<AvatarState>;
   room: React.MutableRefObject<{ noise: number }>;
   onPlay: (song: Song) => void;
+  onLesson: () => void;
   onAssess: () => void;
   onReview: (blob: Blob) => void;
 }
@@ -31,9 +32,9 @@ export function nextSong(progress: Progress): Song {
 }
 
 /** The live stage: sing anything and watch it, with Pip beside you. */
-export function Home({ engine, tracker, coach, micReady, micError, onStartMic, progress, avatar, room, onPlay, onAssess, onReview }: Props) {
+export function Home({ engine, tracker, coach, micReady, micError, onStartMic, progress, avatar, room, onPlay, onLesson, onAssess, onReview }: Props) {
   const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
-  const [note, setNote] = useState<{ name: string; cents: number; state: "idle" | "ok" | "warn" | "bad" }>({ name: "–", cents: 0, state: "idle" });
+  const [note, setNote] = useState<{ name: string; cents: number; state: "idle" | "ok" | "warn" | "bad"; vowel: string }>({ name: "–", cents: 0, state: "idle", vowel: "" });
   const [tip, setTip] = useState<Tip | null>(null);
   const [recording, setRecording] = useState(false);
   const L = useRef({ lastUi: 0, tipAt: 0 });
@@ -44,7 +45,7 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
       fr.push({ t: f.t, midi: f.midi, db: f.db, voiced: f.voiced });
       if (fr.length > 900) fr.splice(0, 300);
       const a = avatar.current;
-      a.voiced = f.voiced; a.midi = f.midi; a.db = f.db; a.h1h2 = f.h1h2; a.floorDb = room.current.noise; a.fever = false;
+      a.voiced = f.voiced; a.midi = f.midi; a.db = f.db; a.h1h2 = f.h1h2; a.f1 = f.f1; a.f2 = f.f2; a.floorDb = room.current.noise; a.fever = false;
       const off = f.voiced ? (f.midi - Math.round(f.midi)) * 100 : 0;
       a.q = f.voiced ? (Math.abs(off) <= 20 ? 1 : Math.abs(off) <= 40 ? 0.5 : 0) : 0;
       const live = tracker.push(f);
@@ -56,7 +57,7 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
       if (next) { l.tipAt = f.t; setTip(next); }
       if (f.t - l.lastUi > 0.1) {
         l.lastUi = f.t;
-        setNote(f.voiced ? { name: noteName(f.midi), cents: off, state: Math.abs(off) <= 12 ? "ok" : Math.abs(off) <= 30 ? "warn" : "bad" } : { name: "–", cents: 0, state: "idle" });
+        setNote(f.voiced ? { name: noteName(f.midi), cents: off, state: Math.abs(off) <= 12 ? "ok" : Math.abs(off) <= 30 ? "warn" : "bad", vowel: f.vowel && f.vowelConf > 0.35 ? f.vowel : "" } : { name: "–", cents: 0, state: "idle", vowel: "" });
         if (f.t - l.tipAt > 6) setTip(null);
       }
     });
@@ -78,7 +79,7 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
         <GameCanvas view={view} />
         <div className="readout-strip" aria-live="off">
           <span className="note-name" data-state={note.state}>{note.name}</span>
-          {note.state !== "idle" && <span className="cents">{note.cents > 0 ? "+" : ""}{Math.round(note.cents)}¢</span>}
+          {note.state !== "idle" && <span className="cents">{note.cents > 0 ? "+" : ""}{Math.round(note.cents)}¢{note.vowel ? ` · “${note.vowel}”` : ""}</span>}
         </div>
         {tip && micReady && <div className="tip-toast" data-tone={tip.tone} role="status"><span className="tip-mark" />{tip.text}</div>}
         <aside className="buddy-panel">
@@ -99,16 +100,16 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
 
       <div className="home-dock">
         <div className="next-card">
-          <span className={`art ${SONG_ART[song.id]?.tint ?? "blue"}`}>{SONG_ART[song.id]?.emoji ?? "🎵"}</span>
+          <span className="art gold">🎓</span>
           <div>
-            <span className="eyebrow">{played ? "Next up" : "Start here"}</span>
-            <strong>{song.title}</strong>
-            <span className="meta">{"●".repeat(song.tier)}{"○".repeat(5 - song.tier)} · notes wait for you</span>
+            <span className="eyebrow">{progress.lessons.some((t) => Date.now() - t < 20 * 3600e3) ? "Another lesson" : "Today's lesson"}</span>
+            <strong>Warm up, one drill, {song.title}</strong>
+            <span className="meta">About 8 minutes · then rest the voice</span>
           </div>
-          <button className="primary" onClick={() => onPlay(song)}>Play</button>
+          <button className="primary" onClick={onLesson}>Start</button>
         </div>
         <div className="quick">
-          <button onClick={() => onPlay(SONGS.find((s) => s.id === "long-tones")!)}><span>🧘</span><span>Warm up</span></button>
+          <button onClick={() => onPlay(song)}><span>{SONG_ART[song.id]?.emoji ?? "🎵"}</span><span>{played ? "Next song" : "Just sing"}</span></button>
           <button className={recording ? "rec on" : "rec"} onClick={() => void toggleRecord()} disabled={!micReady}><span>{recording ? "⏹" : "⏺"}</span><span>{recording ? "Stop" : "Record"}</span></button>
           <button onClick={onAssess}><span>🎚️</span><span>My range</span></button>
         </div>

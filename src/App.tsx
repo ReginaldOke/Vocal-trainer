@@ -18,7 +18,8 @@ import { PitchCanvas, type CanvasView, type TracePoint } from "./ui/PitchCanvas"
 import { Meters, NoteReadout, RangeBar, TipCard, type Readout } from "./ui/Panels";
 import { GameScreen, type ReviewTarget } from "./ui/GameScreen";
 import { TakeReview } from "./ui/TakeReview";
-import { Home } from "./ui/Home";
+import { Home, nextSong } from "./ui/Home";
+import { buildLesson, type LessonPlan } from "./game/lesson";
 import { You } from "./ui/You";
 import { SettingsSheet } from "./ui/SettingsSheet";
 import { EMPTY_AVATAR, SingerAvatar, type AvatarState } from "./ui/SingerAvatar";
@@ -74,6 +75,9 @@ export default function App() {
     low: Infinity,
     high: -Infinity,
     calFrames: [] as Frame[],
+    /** the first half second of each range slide: where the singer chose to start */
+    starts: [] as number[],
+    startAt: -1,
     lastUi: 0,
     tipAt: 0,
     pending: null as Tip | null,
@@ -87,6 +91,7 @@ export default function App() {
   const [micError, setMicError] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
   const [autoplay, setAutoplay] = useState<Song | null>(null);
+  const [lesson, setLesson] = useState<LessonPlan | null>(null);
   const [review, setReview] = useState<{ blob: Blob; targets: ReviewTarget[] | null; title: string } | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -154,7 +159,7 @@ export default function App() {
       tracker.events = [];
 
       const a = avatar.current;
-      a.voiced = f.voiced; a.midi = f.midi; a.db = f.db; a.h1h2 = f.h1h2; a.strain = live.strain; a.floorDb = s.noiseDb; a.fever = false;
+      a.voiced = f.voiced; a.midi = f.midi; a.db = f.db; a.h1h2 = f.h1h2; a.f1 = f.f1; a.f2 = f.f2; a.strain = live.strain; a.floorDb = s.noiseDb; a.fever = false;
       a.q = target && f.voiced ? (Math.abs(foldedCents(f.midi, target.midi)) <= 25 ? 1 : 0) : 0;
 
       if (run) {
@@ -196,7 +201,11 @@ export default function App() {
         }
       }
       if ((s.step === "range-low" || s.step === "range-high") && s.coaching === "range") {
-        if (f.voiced) s.calFrames.push(f);
+        if (f.voiced) {
+          s.calFrames.push(f);
+          if (s.startAt < 0) s.startAt = f.t;
+          if (f.t - s.startAt < 0.6) s.starts.push(f.midi);
+        }
         if (live.note) {
           if (s.step === "range-low" && live.note.median < s.low) { s.low = live.note.median; setRange((x) => ({ ...x, low: s.low })); }
           if (s.step === "range-high" && live.note.median > s.high) { s.high = live.note.median; setRange((x) => ({ ...x, high: s.high })); }
@@ -238,11 +247,17 @@ export default function App() {
     setProgress(next);
   };
 
-  const go = (t: Tab) => { setStudio("off"); S.current.owner = "home"; setFocus(false); setTab(t); };
+  const go = (t: Tab) => { setStudio("off"); S.current.owner = "home"; setFocus(false); if (t !== "songs") setLesson(null); setTab(t); };
 
   const playSong = async (song: Song) => {
     if (!(await startMic())) return;
     setAutoplay(song);
+    go("songs");
+  };
+
+  const startLesson = async () => {
+    if (!(await startMic())) return;
+    setLesson(buildLesson(progress, cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null, nextSong(progress)));
     go("songs");
   };
 
@@ -258,7 +273,7 @@ export default function App() {
     tracker.reset();
     coach.reset();
     const s = S.current;
-    Object.assign(s, { owner: "studio", step: "mic", coaching: "off", micStart: engine.now(), noise: [], low: Infinity, high: -Infinity, calFrames: [] });
+    Object.assign(s, { owner: "studio", step: "mic", coaching: "off", micStart: engine.now(), noise: [], low: Infinity, high: -Infinity, calFrames: [], starts: [], startAt: -1 });
     setScores([]);
     setStepIndex(0);
     setPhase("ready");
@@ -284,11 +299,14 @@ export default function App() {
     }
     const id = STEPS[i].id;
     s.step = id;
+    s.startAt = -1;
     s.coaching = id === "range-low" || id === "range-high" ? "range" : "off";
     if (id === "hold") {
       const span = s.high - s.low;
       const lowFrames = s.calFrames.filter((f) => f.midi < s.low + span * 0.4).map((f) => f.weight).sort((a, b) => a - b);
-      const c: Calibration = { low: s.low, high: s.high, chestWeight: lowFrames.length > 20 ? lowFrames[lowFrames.length >> 1] : 8, noiseDb: s.noiseDb };
+      const starts = [...s.starts].sort((a, b) => a - b);
+      const comfort = starts.length >= 10 ? starts[starts.length >> 1] : undefined;
+      const c: Calibration = { low: s.low, high: s.high, comfort, chestWeight: lowFrames.length > 20 ? lowFrames[lowFrames.length >> 1] : 8, noiseDb: s.noiseDb };
       tracker.reset();
       tracker.calibration = c;
       coach.reset();
@@ -373,13 +391,13 @@ export default function App() {
   else if (tab === "sing")
     body = (
       <Home engine={engine} tracker={tracker} coach={coach} micReady={micReady} micError={micError} onStartMic={() => void startMic()} progress={progress} avatar={avatar} room={room}
-        onPlay={(s) => void playSong(s)} onAssess={() => void beginGuided()} onReview={(blob) => openReview(blob, null, "Your take")} />
+        onPlay={(s) => void playSong(s)} onLesson={() => void startLesson()} onAssess={() => void beginGuided()} onReview={(blob) => openReview(blob, null, "Your take")} />
     );
   else if (tab === "songs")
     body = (
-      <GameScreen engine={engine} tracker={tracker} coach={coach} synth={synth.current} calibrated={cal ? { low: cal.low, high: cal.high } : null} avatar={avatar} room={room}
+      <GameScreen engine={engine} tracker={tracker} coach={coach} synth={synth.current} calibrated={cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null} avatar={avatar} room={room}
         progress={progress} onProgress={setProgress} autoplay={autoplay} onAutoplayed={() => setAutoplay(null)} onFocus={setFocus}
-        onReview={(blob, targets, title) => openReview(blob, targets, title)} />
+        onReview={(blob, targets, title) => openReview(blob, targets, title)} lesson={lesson} onLessonDone={() => { setLesson(null); go("sing"); }} />
     );
   else if (tab === "review")
     body = reviewOpen && review ? (
@@ -443,8 +461,8 @@ export default function App() {
                 <tr key={x.id}>
                   <td>{x.id === "hold" ? "Held note" : x.id === "song" ? "Happy Birthday" : "Scale"}</td>
                   <td>{Number.isNaN(x.meanAbsCents) ? "" : `${Math.round(x.pctInTune)}%`}</td>
-                  <td>{Number.isNaN(x.meanAbsCents) ? "not sung" : `${Math.round(x.meanAbsCents)} cents`}</td>
-                  <td>{Number.isNaN(x.biasCents) ? "" : Math.abs(x.biasCents) < 10 ? "centred" : x.biasCents < 0 ? "flat" : "sharp"}</td>
+                  <td>{Number.isNaN(x.meanAbsCents) ? "not sung" : x.meanAbsCents < 15 ? "tiny" : x.meanAbsCents < 35 ? "small" : "large"}</td>
+                  <td>{Number.isNaN(x.biasCents) ? "" : Math.abs(x.biasCents) < 10 ? "centred" : x.biasCents < 0 ? "under" : "over"}</td>
                 </tr>
               ))}
             </tbody>
@@ -477,7 +495,7 @@ export default function App() {
         body: !mic.measured ? "Measuring the room." : mic.clipping ? "That was loud enough to distort. Move back a little." : mic.levelOk ? "Level looks good." : "Use the volume you would sing at.",
       },
       "range-low": { title: "Slide down to your lowest note", body: "On “ah”, glide slowly down. Hold the lowest note that still sounds like singing." },
-      "range-high": { title: "Slide up to your highest note", body: "Let your voice flip into head voice if it wants to. Stop before it hurts." },
+      "range-high": { title: "Slide up to your highest note", body: "Let your voice go light and thin if it wants to. Stop before it hurts." },
       hold: { title: "Hold one note", body: "Match the guide tone on “ah” and hold it steady. It fills as you hold." },
       song: { title: "Happy Birthday", body: "At your own pace. Each note waits until you sing it, then the next one comes." },
       scale: { title: "Five-note scale", body: "Up five notes and back, three times. Go as slowly as you like." },
@@ -522,7 +540,7 @@ export default function App() {
               <>
                 <p className="result">
                   {score && !Number.isNaN(score.meanAbsCents)
-                    ? `${Math.round(score.pctInTune)}% in tune, average miss ${Math.round(score.meanAbsCents)} cents${Math.abs(score.biasCents) >= 10 ? `, mostly ${score.biasCents < 0 ? "flat" : "sharp"}` : ""}.`
+                    ? `${Math.round(score.pctInTune)}% on the note${Math.abs(score.biasCents) >= 10 ? `, mostly ${score.biasCents < 0 ? "under it" : "over it"}` : ""}.`
                     : "No singing was picked up. Check the microphone and try again."}
                 </p>
                 {takeUrl && <audio src={takeUrl} controls className="player" aria-label="Listen back to your take" />}

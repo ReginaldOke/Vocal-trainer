@@ -10,7 +10,7 @@ export interface Song {
   id: string;
   title: string;
   credit: string;
-  kind: "song" | "drill";
+  kind: "song" | "drill" | "ear";
   /** 1 (easiest) to 5 */
   tier: 1 | 2 | 3 | 4 | 5;
   bpm: number;
@@ -23,6 +23,15 @@ export interface Song {
   steps: SongStep[];
   /** imported by the singer, kept in this browser only */
   custom?: boolean;
+  /**
+   * Ear training: the piano plays a cue, then goes silent while the singer answers.
+   * "match": the cue is the note itself. "interval": the cue is the note `earInterval` below.
+   * "silent": no cue at all, only the name of the note.
+   */
+  ear?: "match" | "interval" | "silent";
+  earInterval?: number;
+  /** each note's lyric is the vowel to sing, and the vowel is scored as well as the pitch */
+  vowels?: boolean;
 }
 
 export interface PreparedNote {
@@ -152,19 +161,31 @@ const MINOR: SongStep[] = (() => {
   return out;
 })();
 
+/** Ear drills: single notes with rests between, spread over a comfortable fifth. */
+const earSteps = (pattern: number[], lyric: (semi: number) => string): SongStep[] => pattern.flatMap((semi): SongStep[] => [[semi, 2, lyric(semi)], [null, 1.5]]);
+const EAR_PATTERN = [0, 4, 2, 7, 5, 3, 7, 0, 5, 2];
+const SOL = ["do", "di", "re", "ri", "mi", "fa", "fi", "sol", "si", "la", "li", "ti"];
+
 export const SONGS: Song[] = [
   { id: "twinkle", title: "Twinkle Twinkle", credit: "Traditional, Mozart's theme", kind: "song", tier: 1, bpm: 96, beatsPerBar: 4, blurb: "A leap of a fifth, then a gentle walk back down.", steps: TWINKLE },
   { id: "birthday", title: "Happy Birthday", credit: "Traditional", kind: "song", tier: 2, bpm: 90, beatsPerBar: 3, blurb: "The famous octave leap in line three. Aim from above.", steps: BIRTHDAY },
   { id: "grace", title: "Amazing Grace", credit: "Traditional, 1779", kind: "song", tier: 3, bpm: 72, beatsPerBar: 3, blurb: "Slow, exposed and a full octave wide. Every note is on show.", steps: GRACE },
   { id: "silent", title: "Silent Night", credit: "Gruber, 1818", kind: "song", tier: 3, bpm: 88, beatsPerBar: 3, blurb: "Gentle sixths and a soaring last line. Keep the air moving.", steps: SILENT_NIGHT },
-  { id: "greensleeves", title: "Greensleeves", credit: "Traditional, 16th c.", kind: "song", tier: 4, bpm: 96, beatsPerBar: 3, mode: "minor", blurb: "A minor-key classic with a wistful raised seventh.", steps: GREENSLEEVES },
+  { id: "greensleeves", title: "Greensleeves", credit: "Traditional, 16th c.", kind: "song", tier: 4, bpm: 96, beatsPerBar: 3, mode: "minor", blurb: "A wistful old tune in a minor key. Take the wide leaps gently.", steps: GREENSLEEVES },
   { id: "ode", title: "Ode to Joy", credit: "Beethoven, 1824", kind: "song", tier: 4, bpm: 108, beatsPerBar: 4, blurb: "Long lines that step up and down. Breathe at the ends of phrases.", steps: ODE },
+  { id: "ear-match", title: "Match the note", credit: "Ear", kind: "ear", tier: 1, bpm: 80, beatsPerBar: 4, ear: "match", blurb: "Hear one note, then sing it back. The piano stays quiet while you answer.", steps: earSteps(EAR_PATTERN, () => "sing it back") },
+  { id: "ear-third", title: "A third up", credit: "Ear", kind: "ear", tier: 2, bpm: 80, beatsPerBar: 4, ear: "interval", earInterval: 4, blurb: "Hear a note, then sing the note two steps above it. Hear it in your head first.", steps: earSteps([0, 2, 5, 3, 7, 0, 4, 2], () => "two steps up") },
+  { id: "ear-fifth", title: "A fifth up", credit: "Ear", kind: "ear", tier: 2, bpm: 80, beatsPerBar: 4, ear: "interval", earInterval: 7, blurb: "Hear a note, then sing the one a fifth above, like the start of Twinkle Twinkle.", steps: earSteps([0, 2, 5, 3, 7, 0, 4, 2], () => "a fifth up") },
+  { id: "ear-octave", title: "An octave up", credit: "Ear", kind: "ear", tier: 3, bpm: 80, beatsPerBar: 4, ear: "interval", earInterval: 12, blurb: "Hear a note, then sing the same note an octave higher. Think Somewhere Over the Rainbow.", steps: earSteps([0, 2, 5, 3, 0, 4], () => "an octave up") },
+  { id: "ear-silent", title: "Inner ear", credit: "Ear", kind: "ear", tier: 3, bpm: 80, beatsPerBar: 4, ear: "silent", blurb: "No piano at all. You see the name of the note; hear it in your head, then sing it.", steps: earSteps(EAR_PATTERN, (semi) => SOL[((semi % 12) + 12) % 12]) },
+  { id: "vowel-shapes", title: "Vowel shapes", credit: "Drill", kind: "drill", tier: 2, bpm: 72, beatsPerBar: 4, vowels: true, blurb: "One note, five vowels. Pip reads the shape of each one.", steps: (["ah", "eh", "ee", "oh", "oo"] as const).flatMap((v): SongStep[] => [[0, 2, v], [null, 1]]).concat((["ah", "eh", "ee", "oh", "oo"] as const).flatMap((v): SongStep[] => [[4, 2, v], [null, 1]])) },
+  { id: "vowel-top", title: "Shape the top", credit: "Drill", kind: "drill", tier: 3, bpm: 108, beatsPerBar: 4, vowels: true, blurb: "Climb on “ah” and let it turn into “uh” for the top two notes. That is how high notes stay easy.", steps: [0, 2, 4, 5, 7].flatMap((semi, i, arr): SongStep[] => [[semi, 1, i >= 3 ? "uh" : "ah"], ...(i === arr.length - 1 ? [[null, 1] as SongStep] : [])]).concat([7, 5, 4, 2, 0].map((semi, i): SongStep => [semi, i === 4 ? 2 : 1, i <= 1 ? "uh" : "ah"])).concat([[null, 2]]).concat([2, 4, 6, 7, 9].flatMap((semi, i, arr): SongStep[] => [[semi, 1, i >= 3 ? "uh" : "ah"], ...(i === arr.length - 1 ? [[null, 1] as SongStep] : [])])).concat([9, 7, 6, 4, 2].map((semi, i): SongStep => [semi, i === 4 ? 2 : 1, i <= 1 ? "uh" : "ah"])) },
   { id: "long-tones", title: "Long Tones", credit: "Drill", kind: "drill", tier: 1, bpm: 60, beatsPerBar: 4, blurb: "Five held notes. Hold each one dead straight for four seconds.", steps: LONG_TONES },
   { id: "five-note", title: "Five-Note Climb", credit: "Drill", kind: "drill", tier: 2, bpm: 132, beatsPerBar: 4, blurb: "Do to sol and back, climbing a semitone each round.", steps: FIVE_NOTE },
-  { id: "leaps", title: "Interval Leaps", credit: "Drill", kind: "drill", tier: 2, bpm: 100, beatsPerBar: 4, blurb: "Jump up a third, fourth, fifth, sixth and octave. Hear the note before you leap.", steps: LEAPS },
+  { id: "leaps", title: "Big Leaps", credit: "Drill", kind: "drill", tier: 2, bpm: 100, beatsPerBar: 4, blurb: "Jump up by bigger and bigger steps. Hear the note in your head before you leap.", steps: LEAPS },
   { id: "octave", title: "Octave Scale", credit: "Drill", kind: "drill", tier: 3, bpm: 120, beatsPerBar: 4, blurb: "Eight notes up and back. Get lighter, not louder, near the top.", steps: OCTAVE },
-  { id: "arpeggio", title: "Arpeggio Ladder", credit: "Drill", kind: "drill", tier: 3, bpm: 120, beatsPerBar: 4, blurb: "Do mi sol do, rising a tone each round.", steps: ARPEGGIO },
-  { id: "minor", title: "Minor Scale", credit: "Drill", kind: "drill", tier: 4, bpm: 116, beatsPerBar: 4, blurb: "Natural minor up and down. The flattened notes are easy to sing sharp.", steps: MINOR },
+  { id: "arpeggio", title: "Broken Chord Ladder", credit: "Drill", kind: "drill", tier: 3, bpm: 120, beatsPerBar: 4, blurb: "Do mi sol do, rising a tone each round.", steps: ARPEGGIO },
+  { id: "minor", title: "Minor Scale", credit: "Drill", kind: "drill", tier: 4, bpm: 116, beatsPerBar: 4, blurb: "A sad-sounding scale up and down. Its lowered notes are easy to push over.", steps: MINOR },
 ];
 
 export const songById = (id: string) => SONGS.find((s) => s.id === id) ?? SONGS[0];
@@ -219,10 +240,31 @@ export type VoicePreset = "low" | "mid" | "high" | "auto";
 /** Comfortable middle of each voice preset, as a MIDI note. */
 const PRESET_CENTRE: Record<Exclude<VoicePreset, "auto">, number> = { low: 54, mid: 60, high: 66 };
 
-/** Pick a tonic that centres the song in the singer's comfortable range. */
-export function chooseTonic(song: Song, preset: VoicePreset, calibrated: { low: number; high: number } | null, transpose: number) {
+/** The note the tune spends most of its time on, weighted by length: where the song "sits". */
+export function songSeat(song: Song) {
+  const w = new Map<number, number>();
+  for (const [semi, beats] of song.steps) if (semi !== null) w.set(semi, (w.get(semi) ?? 0) + beats);
+  const total = [...w.values()].reduce((a, b) => a + b, 0);
+  let acc = 0;
+  for (const [semi, beats] of [...w.entries()].sort((a, b) => a[0] - b[0])) { acc += beats; if (acc >= total / 2) return semi; }
+  return 0;
+}
+
+/**
+ * Pick a key for the song. With a measured voice, put where the song sits on where the voice sits
+ * most easily, then make sure the highest note stays inside the comfortable range. Otherwise centre it.
+ */
+export function chooseTonic(song: Song, preset: VoicePreset, calibrated: { low: number; high: number; comfort?: number } | null, transpose: number) {
   const { lo, hi } = songSpan(song);
-  const centre = preset === "auto" && calibrated ? calibrated.low + (calibrated.high - calibrated.low) * 0.45 : PRESET_CENTRE[preset === "auto" ? "mid" : preset];
+  if (preset === "auto" && calibrated) {
+    const seat = calibrated.comfort ?? calibrated.low + (calibrated.high - calibrated.low) * 0.45;
+    let tonic = Math.round(seat - songSeat(song));
+    // The climax should sit a note or two inside the top of the range, and nothing below the bottom.
+    tonic = Math.min(tonic, Math.round(calibrated.high - 1 - hi));
+    tonic = Math.max(tonic, Math.round(calibrated.low + 1 - lo));
+    return tonic + transpose;
+  }
+  const centre = PRESET_CENTRE[preset === "auto" ? "mid" : preset];
   return Math.round(centre - (lo + hi) / 2) + transpose;
 }
 
