@@ -431,7 +431,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
         if (run.mode === "flow" && run.target && !run.finished) {
           const n = run.target;
           const py = y(n.midi);
-          const frac = Math.min(1, n.held / n.need);
+          const frac = Math.min(1, n.sung / n.need);
           // A charge ring around the hit point.
           g.lineWidth = 3;
           g.strokeStyle = "rgba(255,255,255,0.18)";
@@ -442,7 +442,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
             g.beginPath(); g.arc(hitX, py, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); g.stroke();
             g.shadowBlur = 0;
           }
-          if (run.silent > 2.5 || (n.held === 0 && run.notes.every((m) => !m.judged))) {
+          if (run.silent > 2.5 || (n.sung === 0 && run.notes.every((m) => !m.judged))) {
             g.textAlign = "center";
             g.textBaseline = "middle";
             g.fillStyle = "rgba(255,255,255,0.9)";
@@ -450,7 +450,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
             g.fillText(n.lyric && n.lyric.trim() ? `Sing “${n.lyric.replace(/-$/, "")}” on ${noteName(n.midi)}` : `Sing ${noteName(n.midi)}`, W * 0.6, top + 26);
             g.font = `500 ${narrow ? 12 : 14}px "Inter", sans-serif`;
             g.fillStyle = "rgba(220,228,255,0.7)";
-            g.fillText("Hold it on the line and the song moves on. Take your time.", W * 0.6, top + (narrow ? 46 : 52));
+            g.fillText("The song follows your voice. Sing it your way.", W * 0.6, top + (narrow ? 46 : 52));
             g.textAlign = "left";
             g.textBaseline = "alphabetic";
           }

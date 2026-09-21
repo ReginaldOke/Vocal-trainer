@@ -80,6 +80,13 @@ export class Backing {
     if (this.style === "piano" && this.target !== null && !singing && now - this.lastPulse > 2.2) this.strike(0.45);
   }
 
+  /** Pitches currently sounding from the speakers, so a faint match can be told from singing. */
+  tones(): number[] {
+    if (this.target === null) return [];
+    if (this.style === "tone") return [this.target];
+    return this.chord ? voiceChord(this.chord, this.target, this.tonic) : [this.target];
+  }
+
   /** True while speaker output could be reaching the microphone. */
   audible() {
     if (this.mode !== "quiet") return false;

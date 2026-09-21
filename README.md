@@ -8,7 +8,7 @@ The main event is the **arcade**: songs and drills scroll along a Guitar Hero st
 
 Two ways to play:
 
-- **Your pace** (default). The first note sounds as a guide tone and the song starts when you do. Each note completes the moment you move to the next pitch (or re-attack the same one after a breath), so the song runs at whatever speed you sing it; a note you simply hold completes after most of its written length, and the last note ends when you stop.
+- **Your pace** (default). The song follows your voice, whatever you sing. Each note ends when you start the next one, at any pitch and any volume: a clear jump in pitch, or a breath and a fresh attack. A note you simply hold completes after most of its written length, and the last note ends when you stop. Pitch only affects the score, never whether the song moves on.
 - **In tempo.** Notes scroll at the song's speed with a count-in and click track, for singers with headphones.
 
 **Piano chords** play under you by default: a small additive piano (`src/audio/piano.ts`) strikes a diatonic chord chosen for each melody note (`src/game/harmony.ts`, I, IV, V, vi or ii), voiced with your note on top so the pitch is still given. In "your pace" mode the chords follow you, striking when the note changes and pulsing softly while a note waits. Through speakers the backing ducks under your voice and turns itself down if the microphone starts to hear it (`src/audio/backing.ts`); the old single guide tone is still available in Settings, and with headphones either can play at full volume.

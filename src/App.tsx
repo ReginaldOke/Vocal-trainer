@@ -145,11 +145,8 @@ export default function App() {
       const bk = backing.current;
       if (bk && s.running) {
         const gate = Math.max(-62, Math.min(-35, s.noiseDb + 8));
-        if (bk.audible() && f.voiced && f.db < gate + 9) {
-          const exact = target ? Math.abs(foldedCents(f.midi, target.midi)) < 12 : false;
-          if (bk.style === "piano" || exact) { f = { ...raw, voiced: false, midi: NaN }; bk.bleed(); }
-        }
-        bk.tick(f.voiced && f.db > gate + 6);
+        if (bk.audible() && f.voiced && f.db < gate + 5 && bk.tones().some((m) => Math.abs(foldedCents(f.midi, m)) < 25)) { f = { ...raw, voiced: false, midi: NaN }; bk.bleed(); }
+        bk.tick(f.voiced);
       }
       const live = tracker.push(f);
       const events = tracker.events;

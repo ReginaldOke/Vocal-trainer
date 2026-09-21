@@ -7,7 +7,8 @@ import { Backing } from "../audio/backing";
 import { BuddyVoice } from "../audio/buddyVoice";
 import { midiToHz, noteName } from "../audio/pitch";
 import { Coach, foldedCents, type Tip } from "../coach/rules";
-import { SONGS, chooseTonic, prepareSong, songSpan, type Song } from "../game/songs";
+import { SONGS, chooseTonic, loadCustomSongs, prepareSong, saveCustomSongs, songSpan, type Song } from "../game/songs";
+import { songFromMidi } from "../game/midi";
 import { GameRun, difficultyById, type RunSummary } from "../game/scoring";
 import { bestForSong, levelFromXp, recordRun, saveProgress, unlockLive, type Progress, type RecordOutcome, type Settings } from "../game/progress";
 import { GameCanvas, type GameView } from "./GameCanvas";
@@ -57,6 +58,26 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   const [toast, setToast] = useState<string | null>(null);
   const [tab, setTab] = useState<"song" | "drill">("song");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [custom, setCustom] = useState<Song[]>(() => loadCustomSongs());
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const importMidi = async (file: File) => {
+    setImportError(null);
+    try {
+      const song = songFromMidi(await file.arrayBuffer(), file.name);
+      const next = [...custom, song];
+      setCustom(next);
+      saveCustomSongs(next);
+      setToast(`Added ${song.title}`);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "That file could not be read.");
+    }
+  };
+  const removeCustom = (id: string) => {
+    const next = custom.filter((s) => s.id !== id);
+    setCustom(next);
+    saveCustomSongs(next);
+  };
 
   const G = useRef({
     run: null as GameRun | null,
@@ -135,13 +156,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
 
       let f: Frame = raw;
       const backing = g.backing;
-      if (backing && backing.audible() && f.voiced && f.db < gate + 9) {
-        // Something faint while the speakers are sounding is the backing leaking into the mic, not singing.
-        const exact = run.target ? Math.abs(foldedCents(f.midi, run.target.midi)) < 12 : false;
-        if (backing.style === "piano" || exact) { f = { ...raw, voiced: false, midi: NaN }; backing.bleed(); }
+      if (backing && backing.audible() && f.voiced && f.db < gate + 5) {
+        // Something faint, on a pitch the speakers are playing, is the backing leaking into the mic.
+        if (backing.tones().some((m) => Math.abs(foldedCents(f.midi, m)) < 25)) { f = { ...raw, voiced: false, midi: NaN }; backing.bleed(); }
       }
       if (backing) {
-        backing.tick(f.voiced && f.db > gate + 6);
+        backing.tick(f.voiced);
         if (!f.voiced && f.db < gate - 3) { g.quietFor += dt; if (g.quietFor > 1.2) { backing.relax(); g.quietFor = 0.6; } }
         else g.quietFor = 0;
       }
@@ -191,7 +211,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     if (engine.ctx) {
       g.backing ??= new Backing(engine.ctx);
       g.backing.start();
-      g.backing.setKey(prepared.tonic, s.mode === "minor" || s.id === "minor" ? "minor" : "major");
+      g.backing.setKey(prepared.tonic + (s.keyOffset ?? 0), s.mode === "minor" || s.id === "minor" ? "minor" : "major");
       g.backing.setStyle(st.backing);
       // With headphones in tempo mode the whole melody plays; piano chords still fit under it.
       g.backing.setMode(st.mode === "tempo" && st.guide === "full" && st.backing === "tone" ? "off" : st.guide);
@@ -318,7 +338,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     );
   }
 
-  const list = SONGS.filter((s) => s.kind === tab);
+  const list = [...SONGS, ...custom].filter((s) => s.kind === tab);
   return (
     <main className="page">
       <div className="page-head">
@@ -332,19 +352,33 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         </div>
       </div>
 
+      {tab === "song" && (
+        <div className="import-row">
+          <label className="button small">
+            Add a song from MIDI
+            <input type="file" accept=".mid,.midi,.kar,audio/midi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importMidi(f); e.target.value = ""; }} />
+          </label>
+          <span className="fine">Any tune you have as a .mid file. It stays on this device.</span>
+          {importError && <span className="error">{importError}</span>}
+        </div>
+      )}
+
       <section className="song-grid">
         {list.map((s) => {
           const b = bestForSong(progress, s.id);
           const tonic = chooseTonic(s, settings.voice, calibrated, settings.transpose);
           const span = songSpan(s);
-          const art = SONG_ART[s.id] ?? { emoji: "🎵", tint: "blue" as const };
+          const art = SONG_ART[s.id] ?? { emoji: s.custom ? "🎤" : "🎵", tint: "peach" as const };
           return (
-            <button key={s.id} className="song-card" onClick={() => play(s)}>
-              <span className={`art ${art.tint}`}>{art.emoji}</span>
-              <strong>{s.title}</strong>
-              <span className="meta"><span className="song-tier" aria-label={`tier ${s.tier}`}>{[1, 2, 3, 4, 5].map((k) => <i key={k} data-on={k <= s.tier} />)}</span>{noteName(tonic + span.lo)}–{noteName(tonic + span.hi)}</span>
-              <span className="song-best">{b ? <><Stars n={b.stars} /><em>{b.score.toLocaleString()}</em></> : <em>New</em>}</span>
-            </button>
+            <div key={s.id} className="song-card-wrap">
+              <button className="song-card" onClick={() => play(s)}>
+                <span className={`art ${art.tint}`}>{art.emoji}</span>
+                <strong>{s.title}</strong>
+                <span className="meta"><span className="song-tier" aria-label={`tier ${s.tier}`}>{[1, 2, 3, 4, 5].map((k) => <i key={k} data-on={k <= s.tier} />)}</span>{noteName(tonic + span.lo)}–{noteName(tonic + span.hi)}</span>
+                <span className="song-best">{b ? <><Stars n={b.stars} /><em>{b.score.toLocaleString()}</em></> : <em>New</em>}</span>
+              </button>
+              {s.custom && <button className="song-remove" aria-label={`Remove ${s.title}`} onClick={() => removeCustom(s.id)}>×</button>}
+            </div>
           );
         })}
       </section>

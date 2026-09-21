@@ -17,8 +17,12 @@ export interface Song {
   beatsPerBar: number;
   /** harmony for the piano backing */
   mode?: "major" | "minor";
+  /** semitones from the steps' zero to the key's tonic, when the melody is not written from do */
+  keyOffset?: number;
   blurb: string;
   steps: SongStep[];
+  /** imported by the singer, kept in this browser only */
+  custom?: boolean;
 }
 
 export interface PreparedNote {
@@ -220,4 +224,15 @@ export function prepareFromNotes(id: string, title: string, notes: { midi: numbe
     lo: Math.min(...midis),
     hi: Math.max(...midis),
   };
+}
+
+const CUSTOM_KEY = "vocal-coach.songs.v1";
+
+export function loadCustomSongs(): Song[] {
+  try { return (JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? "[]") as Song[]).map((s) => ({ ...s, custom: true })); }
+  catch { return []; }
+}
+
+export function saveCustomSongs(songs: Song[]) {
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(songs)); } catch { /* storage full or blocked */ }
 }

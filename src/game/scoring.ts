@@ -37,8 +37,9 @@ export interface RunNote extends PreparedNote {
   /** median signed error in cents over the sung frames, NaN if not sung */
   cents: number;
   errs: number[];
-  /** flow mode: seconds of on-pitch singing banked so far, and how many are needed */
+  /** flow mode: seconds of on-pitch singing banked so far, seconds sung at any pitch, and how many are needed */
   held: number;
+  sung: number;
   need: number;
   skipped: boolean;
   /** engine time when this note became the target, when it was first sung on pitch, and when it was judged */
@@ -69,13 +70,15 @@ const SETTLE_BINS = 3;
 const FEVER_SECONDS = 10;
 const NOTES_PER_MULTIPLIER = 6;
 export const MAX_MULTIPLIER = 4;
-/** flow mode: give up on a note after this long of singing the wrong pitch */
-const WRONG_LIMIT = 3.5;
 const SLIDE_SECONDS = 0.28;
-/** flow mode: the least a note must be sung before moving to the next pitch counts as finishing it */
+/** flow mode: the least a note must be sung (at any pitch) before a new note can end it */
 const MIN_HOLD = 0.1;
-/** flow mode: how long the singer must sit on the next note before the song follows them */
-const MOVE_CONFIRM = 0.1;
+/** flow mode: a pitch has to sit still this long before a jump away from it counts as a new note */
+const STABLE_BEFORE_CHANGE = 0.15;
+/** flow mode: a new pitch has to persist this long to count as a new note */
+const CHANGE_CONFIRM = 0.08;
+/** flow mode: a jump of at least this many semitones from the note being sung is a new note */
+const CHANGE_SEMITONES = 1.5;
 
 const NOTE_POINTS: Record<Judgement, number> = { perfect: 100, great: 60, good: 30, miss: 0 };
 const SUSTAIN_PER_SECOND = 40;
@@ -113,9 +116,11 @@ export class GameRun {
   /** flow mode: song position in seconds of the written layout */
   private pos: number;
   private cur = 0;
-  private wrong = 0;
-  private movedFor = 0;
   private gapFor = 0;
+  /** the pitch the singer has settled on for the current note, however far from the target */
+  private ref = NaN;
+  private stableFor = 0;
+  private changeFor = 0;
   private qSum = 0;
   private qN = 0;
   private slide: { from: number; to: number; at: number } | null = null;
@@ -124,7 +129,7 @@ export class GameRun {
     this.notes = song.notes.map((n) => ({
       ...n,
       bins: new Float32Array(Math.max(1, Math.ceil(n.dur / BIN))).fill(-1),
-      judged: null, quality: 0, cents: NaN, errs: [], held: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
+      judged: null, quality: 0, cents: NaN, errs: [], held: 0, sung: 0, skipped: false, onAt: -1, sungAt: -1, offAt: -1,
       need: Math.max(0.3, Math.min(4, n.dur * 0.75)),
     }));
     this.centre = (song.lo + song.hi) / 2;
@@ -255,70 +260,79 @@ export class GameRun {
     this.target = note;
     if (note.onAt < 0) note.onAt = now;
 
-    // The song follows the singer: a note is done when it has been held long enough, or as soon as
-    // the singer has clearly moved on to the next note (or re-attacked the same one after a breath).
+    // The song follows the singer, whatever they sing: a note ends when they start another one
+    // (a clear jump in pitch, or a breath and a fresh attack), when they simply stop at the end,
+    // or after they have sung it for most of its written length. Pitch only affects the score.
     const next = this.notes[this.cur + 1];
     let err: number | null = null, q = 0;
     let movedOn = false;
     if (f.voiced) {
       this.silent = 0;
-      err = this.errorFor(f, note, note.held > 0 ? 1 : 0.2);
-      q = this.frameQuality(err);
-      if (q > 0) {
-        if (note.sungAt < 0) note.sungAt = now;
-        note.held += dt * (q >= 0.75 ? 1 : 0.6);
-        this.qSum += q;
-        this.qN++;
-        note.errs.push(err);
-        this.wrong = Math.max(0, this.wrong - dt);
-        this.movedFor = 0;
-        this.score += SUSTAIN_PER_SECOND * q * this.multiplier * (this.fever.active ? 2 : 1) * dt;
-        // A breath then the same pitch again is the next note, when it repeats this one.
-        if (next && next.midi === note.midi && this.gapFor >= 0.06 && note.held >= MIN_HOLD) movedOn = true;
-      } else {
-        if (next && note.held >= MIN_HOLD && this.frameQuality(foldedCents(f.midi, next.midi)) > 0) {
-          this.movedFor += dt;
-          if (this.movedFor >= MOVE_CONFIRM) movedOn = true;
+      if (note.sung === 0 || Number.isNaN(this.ref)) { this.ref = f.midi; this.stableFor = 0; this.changeFor = 0; }
+      // A breath and a fresh attack is a new note, whatever its pitch.
+      if (this.gapFor >= 0.06 && note.sung >= MIN_HOLD) movedOn = true;
+      else {
+        const jump = Math.abs(f.midi - this.ref);
+        if (jump < 0.75) {
+          this.stableFor += dt;
+          this.changeFor = 0;
+          this.ref += (f.midi - this.ref) * 0.2;
+        } else if (jump >= CHANGE_SEMITONES) {
+          this.changeFor += dt;
+          if (this.stableFor >= STABLE_BEFORE_CHANGE && this.changeFor >= CHANGE_CONFIRM && note.sung >= MIN_HOLD) movedOn = true;
         } else {
-          this.movedFor = 0;
-          this.wrong += dt;
-          note.held = Math.max(0, note.held - dt * 0.25);
+          // Between a wobble and a jump: let it ride.
+          this.changeFor = 0;
         }
       }
       this.gapFor = 0;
+      if (!movedOn) {
+        note.sung += dt;
+        err = this.errorFor(f, note, note.held > 0 ? 1 : 0.2);
+        q = this.frameQuality(err);
+        this.qSum += q;
+        this.qN++;
+        if (q > 0) {
+          if (note.sungAt < 0) note.sungAt = now;
+          note.held += dt;
+          note.errs.push(err);
+          this.score += SUSTAIN_PER_SECOND * q * this.multiplier * (this.fever.active ? 2 : 1) * dt;
+        }
+      }
     } else {
       this.silent += dt;
-      if (note.held > 0) this.gapFor += dt;
+      if (note.sung > 0) this.gapFor += dt;
       // Nothing follows the last note, so the singer stopping is how it ends.
-      if (!next && note.held >= MIN_HOLD && this.silent >= 0.5) movedOn = true;
+      if (!next && note.sung >= MIN_HOLD && this.silent >= 0.5) movedOn = true;
     }
 
-    const frac = Math.min(1, note.held / note.need);
+    const frac = Math.min(1, note.sung / note.need);
     const want = note.start + frac * note.dur;
     this.pos = this.slide ? this.slide.from + (want - this.slide.from) * slideU : want;
-    // The tube fills as the note is banked.
+    // The tube fills as the note is sung, coloured by how close it was.
     const idx = Math.min(note.bins.length - 1, Math.floor(frac * note.bins.length));
-    for (let i = 0; i <= idx; i++) if (note.bins[i] < 0 || i === idx) note.bins[i] = q > 0 ? q : Math.max(0, note.bins[i]);
+    for (let i = 0; i <= idx; i++) if (note.bins[i] < 0 || i === idx) note.bins[i] = f.voiced && !movedOn ? q : Math.max(0, note.bins[i]);
     this.pushTrace(f, now, note, err, q);
 
     if (frac >= 1 || movedOn) {
       this.completeFlowNote(note, now, false);
-      // The frame that proved the singer moved on belongs to the next note.
-      if (movedOn && depth === 0) this.updateFlow(f, now, dt, 1);
-    } else if (this.wrong >= WRONG_LIMIT) this.completeFlowNote(note, now, true);
+      // The frame that started the new note belongs to it.
+      if (movedOn && f.voiced && depth === 0) this.updateFlow(f, now, dt, 1);
+    }
   }
 
   private completeFlowNote(note: RunNote, now: number, skipped: boolean) {
-    const quality = this.qN ? (this.qSum / this.qN) * (skipped ? Math.min(1, note.held / note.need) : 1) : 0;
+    const quality = this.qN ? this.qSum / this.qN : 0;
     // Mark the tube as fully sung when the singer moved on early, so it reads as complete.
     if (!skipped) for (let i = 0; i < note.bins.length; i++) if (note.bins[i] < 0) note.bins[i] = quality;
     note.skipped = skipped;
     this.judge(note, quality, now);
     this.qSum = 0;
     this.qN = 0;
-    this.wrong = 0;
-    this.movedFor = 0;
     this.gapFor = 0;
+    this.ref = NaN;
+    this.stableFor = 0;
+    this.changeFor = 0;
     this.silent = 0;
     this.cur++;
     this.slide = { from: this.pos, to: 0, at: now };
