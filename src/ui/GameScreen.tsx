@@ -12,7 +12,8 @@ import { songFromMidi } from "../game/midi";
 import { GameRun, difficultyById, type PhraseReport, type RunSummary } from "../game/scoring";
 import { bestForSong, levelFromXp, recordRun, saveProgress, unlockLive, type Progress, type RecordOutcome, type Settings } from "../game/progress";
 import { GameCanvas, type GameView } from "./GameCanvas";
-import { SingerAvatar, type AvatarState } from "./SingerAvatar";
+import type { AvatarState } from "./SingerAvatar";
+import { BuddyPanel } from "./BuddyPanel";
 import { SettingsSheet } from "./SettingsSheet";
 import { SONG_ART } from "./songArt";
 import { offWords } from "../coach/words";
@@ -408,10 +409,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         </div>
         <div className="stage-wrap">
           <GameCanvas view={view} />
-          <aside className="buddy-panel">
-            <SingerAvatar state={avatar} />
-            <div className="buddy-plate">Pip</div>
-          </aside>
+          <BuddyPanel state={avatar} kind={settings.buddy} onSwap={(k) => setSetting("buddy", k)} />
         </div>
         <CoachDrawer tip={null} fallback={step.instruction} tone="info" />
       </main>
@@ -462,10 +460,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         </div>
         <div className="stage-wrap">
           <GameCanvas view={view} />
-          <aside className="buddy-panel">
-            <SingerAvatar state={avatar} />
-            <div className="buddy-plate">Pip</div>
-          </aside>
+          <BuddyPanel state={avatar} kind={settings.buddy} onSwap={(k) => setSetting("buddy", k)} />
         </div>
         <CoachDrawer tip={tip} fallback={step && step.kind === "song" ? step.instruction : settings.mode === "flow" ? "The song follows your voice. Sing it your way." : "Listening…"} tone="info" />
         {toast && <div className="toast" role="status">{toast}</div>}
@@ -547,7 +542,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         )}
 
         <section className="card coach-notes">
-          <h2>Pip's note</h2>
+          <h2>Coach's note</h2>
           <ul>{notes.map((t) => <li key={t}>{t}</li>)}</ul>
           {trouble.length > 0 && (
             <p className="fine" style={{ marginTop: "0.5rem" }}>

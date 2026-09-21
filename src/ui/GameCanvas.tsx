@@ -590,7 +590,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
           g.strokeStyle = "#37d6b2";
           g.beginPath(); g.arc(hitX, py, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * glide.progress(last.midi)); g.stroke();
         }
-        // Prompts sit beside the hit line on phones, where Pip's corner panel cannot cover them.
+        // Prompts sit beside the hit line on phones, where the partner's corner panel cannot cover them.
         const promptX = narrow ? hitX + 14 : W * 0.6;
         g.textAlign = narrow ? "left" : "center"; g.textBaseline = "middle";
         g.fillStyle = "rgba(244,241,236,0.9)";

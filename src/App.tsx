@@ -23,7 +23,8 @@ import { Home, nextSong } from "./ui/Home";
 import { buildLesson, type LessonPlan } from "./game/lesson";
 import { You } from "./ui/You";
 import { SettingsSheet } from "./ui/SettingsSheet";
-import { EMPTY_AVATAR, SingerAvatar, type AvatarState } from "./ui/SingerAvatar";
+import { EMPTY_AVATAR, type AvatarState } from "./ui/SingerAvatar";
+import { BuddyPanel } from "./ui/BuddyPanel";
 import { Mic, ListMusic, Search, UserRound, Star, Sparkles, type LucideIcon } from "lucide-react";
 
 type Tab = "sing" | "songs" | "review" | "you";
@@ -412,7 +413,7 @@ export default function App() {
   else if (tab === "sing")
     body = (
       <Home engine={engine} tracker={tracker} coach={coach} micReady={micReady} micError={micError} onStartMic={() => void startMic()} progress={progress} avatar={avatar} room={room}
-        onPlay={(s) => void playSong(s)} onLesson={() => void startLesson()} onAssess={() => void beginGuided()} onReview={(blob) => openReview(blob, null, "Your take")} />
+        onPlay={(s) => void playSong(s)} onLesson={() => void startLesson()} onBuddy={(k) => setSetting("buddy", k)} onAssess={() => void beginGuided()} onReview={(blob) => openReview(blob, null, "Your take")} />
     );
   else if (tab === "songs")
     body = (
@@ -573,7 +574,7 @@ export default function App() {
         </section>
 
         <aside className="side">
-          <div className="buddy-panel studio"><SingerAvatar state={avatar} /></div>
+          <BuddyPanel className="studio" state={avatar} kind={progress.settings.buddy} onSwap={(k) => setSetting("buddy", k)} />
           <NoteReadout r={readout} />
           <Meters r={readout} />
           <RangeBar low={cal?.low ?? range.low} high={cal?.high ?? range.high} current={readout.voiced ? readout.midi : null} />

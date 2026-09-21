@@ -3,6 +3,7 @@ import type { VoicePreset } from "./songs";
 import type { GuideMode } from "../audio/guide";
 import type { BackingStyle } from "../audio/backing";
 import type { Mode } from "./scoring";
+import type { BuddyKind } from "../ui/avatars";
 
 export interface Best {
   score: number;
@@ -21,8 +22,10 @@ export interface Settings {
   /** what plays under the singer: piano chords or a single guide tone */
   backing: BackingStyle;
   metronome: boolean;
-  /** the bird sings the detected pitch back (headphones only) */
+  /** the partner sings the detected pitch back (headphones only) */
   buddyVoice: boolean;
+  /** which animal sings along */
+  buddy: BuddyKind;
 }
 
 /** One finished take, kept so progress can be charted and lessons planned. */
@@ -91,7 +94,7 @@ const DEFAULT: Progress = {
   updatedAt: 0,
   best: {},
   achievements: {},
-  settings: { difficulty: "medium", mode: "flow", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false },
+  settings: { difficulty: "medium", mode: "flow", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false, buddy: "frog" },
 };
 
 export function loadProgress(): Progress {

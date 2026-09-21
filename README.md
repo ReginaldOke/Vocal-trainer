@@ -17,7 +17,7 @@ Two ways to play:
 
 **Tap any note to hear it.** On the highway, tapping a note tube sounds that note on the piano and flashes the tube, so you can find a pitch before you sing it. App chrome uses Lucide icons; song tiles keep their emoji art.
 
-**Pip the songbird.** A 3D bird (Three.js, `src/ui/SingerAvatar.tsx`) sings along beside the highway and in the studio: his beak opens with your volume and gapes wider for bright vowels, he stretches up and raises his crest for high notes, flaps his wings when you sing out, frowns and flushes when you push, and a glow ring lights up when you are on target. With headphones on, "Pip sings along" gives him a formant-synth voice that follows your pitch (`src/audio/buddyVoice.ts`).
+**A singing partner.** A small 3D animal sings along beside the highway and in the studio: a frog by default, or a bird, snail, lizard or monk (tap the partner to swap, or choose in Settings). All five are driven the same way from the voice (`src/ui/avatars.ts`): the mouth opens with your volume and spreads or rounds with the vowel, the head lifts for high notes, the body reacts to loudness, strain shows as a flush, and a glow ring lights up when you are on target. With headphones on, "Partner sings along" gives it a formant-synth voice that follows your pitch (`src/audio/buddyVoice.ts`).
 
 **Record and review.** Hit Record in free practice (or "Review this take" after a song, or upload any recording) to get a zoomable pitch map of the take: green where it was in tune, amber where it was close, red where it was pitchy, and a ribbon that thickens with volume. Scroll to zoom, drag to pan, click to seek, and jump straight to the worst stretches.
 

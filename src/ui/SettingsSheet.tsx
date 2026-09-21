@@ -2,6 +2,7 @@ import type { GuideMode } from "../audio/guide";
 import type { Settings } from "../game/progress";
 import { DIFFICULTIES } from "../game/scoring";
 import type { VoicePreset } from "../game/songs";
+import { BUDDIES } from "./avatars";
 
 interface Props {
   settings: Settings;
@@ -66,9 +67,15 @@ export function SettingsSheet({ settings, calibrated, onChange, onClose }: Props
         </div>
 
         <div className="setting">
+          <span className="setting-label">Singing partner</span>
+          <Chips value={settings.buddy} options={BUDDIES.map((b) => ({ id: b.id, text: b.label }))} onPick={(v) => onChange("buddy", v)} />
+          <p className="fine">You can also tap the partner on screen to swap.</p>
+        </div>
+
+        <div className="setting">
           <span className="setting-label">Extras</span>
           {settings.mode === "tempo" && <label className="check"><input type="checkbox" checked={settings.metronome} onChange={(e) => onChange("metronome", e.target.checked)} /> Click track</label>}
-          <label className="check"><input type="checkbox" checked={settings.buddyVoice} onChange={(e) => onChange("buddyVoice", e.target.checked)} /> Pip sings along (headphones only)</label>
+          <label className="check"><input type="checkbox" checked={settings.buddyVoice} onChange={(e) => onChange("buddyVoice", e.target.checked)} /> Partner sings along (headphones only)</label>
         </div>
       </div>
     </div>

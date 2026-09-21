@@ -187,13 +187,14 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
 .coach-drawer[data-tone="alert"] { background: var(--rose); border-color: transparent; color: #fff; font-weight: 600; }
 .coach-drawer[data-tone="alert"] .tip-mark, .coach-drawer[data-tone="alert"] .coach-chevron { background: #fff; color: #fff; }
 
-/* ---------- Pip ---------- */
+/* ---------- Singing partner ---------- */
 .buddy { width: 100%; height: 100%; min-height: 0; }
 .buddy canvas { display: block; width: 100% !important; height: 100% !important; }
 .buddy-panel { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 0.3rem; border-radius: var(--radius); padding: 0.4rem; overflow: hidden; min-height: 0; background: radial-gradient(80% 60% at 50% 35%, rgba(249, 210, 74, 0.18), rgba(0, 0, 0, 0) 70%), linear-gradient(180deg, #2a2340, var(--surface)); box-shadow: inset 0 0 0 1px var(--line); }
 .buddy-plate { justify-self: center; font: 700 0.72rem/1 var(--body); letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); padding: 0.35rem 0.9rem; border: 1.5px solid rgba(249, 210, 74, 0.45); border-radius: 999px; background: rgba(0, 0, 0, 0.35); }
+.buddy-panel { cursor: pointer; }
+.buddy-panel:focus-visible { outline: 3px solid var(--blue); }
 .buddy-panel.studio { height: 12rem; }
-.buddy-panel.studio .check { justify-self: center; font-size: 0.85rem; }
 
 /* ---------- Pages with a reading column ---------- */
 .page { max-width: 52rem; margin: 0 auto; padding: 0.5rem 1.25rem 3rem; display: grid; gap: 1.25rem; align-content: start; }

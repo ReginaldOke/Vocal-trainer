@@ -6,7 +6,9 @@ import type { Coach, Tip } from "../coach/rules";
 import type { Progress } from "../game/progress";
 import { SONGS, type Song } from "../game/songs";
 import { GameCanvas, type GameView } from "./GameCanvas";
-import { SingerAvatar, type AvatarState } from "./SingerAvatar";
+import type { AvatarState } from "./SingerAvatar";
+import { BuddyPanel } from "./BuddyPanel";
+import type { BuddyKind } from "./avatars";
 import { GraduationCap, Play, Circle, Square, SlidersHorizontal } from "lucide-react";
 import { CoachDrawer } from "./CoachDrawer";
 import { MicMeter } from "./MicMeter";
@@ -23,6 +25,7 @@ interface Props {
   room: React.MutableRefObject<{ noise: number }>;
   onPlay: (song: Song) => void;
   onLesson: () => void;
+  onBuddy: (k: BuddyKind) => void;
   onAssess: () => void;
   onReview: (blob: Blob) => void;
 }
@@ -33,8 +36,8 @@ export function nextSong(progress: Progress): Song {
   return songs.find((s) => !Object.entries(progress.best).some(([k, b]) => k.startsWith(s.id + ":") && b.stars >= 3)) ?? songs[songs.length - 1];
 }
 
-/** The live stage: sing anything and watch it, with Pip beside you. */
-export function Home({ engine, tracker, coach, micReady, micError, onStartMic, progress, avatar, room, onPlay, onLesson, onAssess, onReview }: Props) {
+/** The live stage: sing anything and watch it, with your partner beside you. */
+export function Home({ engine, tracker, coach, micReady, micError, onStartMic, progress, avatar, room, onPlay, onLesson, onBuddy, onAssess, onReview }: Props) {
   const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
   const [note, setNote] = useState<{ name: string; cents: number; state: "idle" | "ok" | "warn" | "bad"; vowel: string }>({ name: "–", cents: 0, state: "idle", vowel: "" });
   const [tip, setTip] = useState<Tip | null>(null);
@@ -84,15 +87,12 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
           {note.state !== "idle" && <span className="cents">{note.cents > 0 ? "+" : ""}{Math.round(note.cents)}¢{note.vowel ? ` · “${note.vowel}”` : ""}</span>}
           {micReady && <MicMeter state={avatar} />}
         </div>
-        <aside className="buddy-panel">
-          <SingerAvatar state={avatar} />
-          <div className="buddy-plate">Pip</div>
-        </aside>
+        <BuddyPanel state={avatar} kind={progress.settings.buddy} onSwap={onBuddy} />
         {!micReady && (
           <div className="stage-overlay">
             <div className="card">
               <h1>Let's hear you</h1>
-              <p className="fine">Sing anything. Pip and the line follow your voice.</p>
+              <p className="fine">Sing anything. Your partner and the line follow your voice.</p>
               <button className="primary big" onClick={onStartMic}>Start singing</button>
               {micError && <p className="error">{micError}</p>}
             </div>
@@ -100,7 +100,7 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
         )}
       </div>
 
-      {micReady && <CoachDrawer tip={tip} fallback="Sing anything. Pip and the line follow your voice." />}
+      {micReady && <CoachDrawer tip={tip} fallback="Sing anything. Your partner and the line follow your voice." />}
 
       <div className="home-dock">
         <div className="next-card">
