@@ -374,8 +374,9 @@ export class GameRun {
       const quiet = (note.sung === 0 && !this.armed) || f.db < this.peakDb - 12;
       if (quiet) this.silent += dt;
       if ((note.sung > 0 || this.armed) && quiet) this.gapFor += dt;
-      // Nothing follows the last note, so the singer stopping is how it ends.
-      if (!next && note.sung >= MIN_HOLD && this.silent >= 0.5) { movedOn = true; note.endedBy = "stop"; }
+      // When a rest follows (or nothing does), the singer stopping is how the note ends.
+      const restAfter = !next || next.start - (note.start + note.dur) > 0.25;
+      if (restAfter && note.sung >= MIN_HOLD && this.silent >= 0.5) { movedOn = true; note.endedBy = "stop"; }
     }
 
     const frac = Math.min(1, note.sung / note.need);
