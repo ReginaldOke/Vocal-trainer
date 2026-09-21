@@ -19,6 +19,8 @@ import { pushProgress, reconcile } from "./game/sync";
 import { PitchCanvas, type CanvasView, type TracePoint } from "./ui/PitchCanvas";
 import { Meters, NoteReadout, RangeBar, TipCard, type Readout } from "./ui/Panels";
 import { GameScreen, type ReviewTarget } from "./ui/GameScreen";
+import { TrackScreen } from "./ui/TrackScreen";
+import type { Track } from "./game/tracks";
 import { TakeReview } from "./ui/TakeReview";
 import { Home, nextSong } from "./ui/Home";
 import { buildLesson, type LessonPlan } from "./game/lesson";
@@ -108,6 +110,7 @@ export default function App() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [studio, setStudio] = useState<"off" | "guided" | "report">("off");
+  const [trackPlay, setTrackPlay] = useState<{ track: Track; mode: "lesson" | "sing" } | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("ready");
   const [readout, setReadout] = useState<Readout>(EMPTY);
@@ -421,7 +424,12 @@ export default function App() {
   const rangeOk = step === "range-low" ? Number.isFinite(range.low) : Number.isFinite(range.high) && range.high - range.low >= 7;
 
   let body: React.ReactNode;
-  if (studio === "guided") body = renderStudio();
+  if (trackPlay)
+    body = (
+      <TrackScreen engine={engine} tracker={tracker} coach={coach} avatar={avatar} room={room} progress={progress} calibrated={cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null}
+        track={trackPlay.track} mode={trackPlay.mode} onProgress={setProgress} onReview={(blob, title) => { setTrackPlay(null); openReview(blob, null, title); }} onClose={() => setTrackPlay(null)} />
+    );
+  else if (studio === "guided") body = renderStudio();
   else if (studio === "report") body = renderReport();
   else if (tab === "sing")
     body = (
@@ -432,7 +440,8 @@ export default function App() {
     body = (
       <GameScreen engine={engine} tracker={tracker} coach={coach} synth={synth.current} calibrated={cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null} avatar={avatar} room={room}
         progress={progress} onProgress={setProgress} autoplay={autoplay} onAutoplayed={() => setAutoplay(null)} onFocus={setFocus}
-        onReview={(blob, targets, title) => openReview(blob, targets, title)} lesson={lesson} onLessonDone={() => { setLesson(null); go("sing"); }} />
+        onReview={(blob, targets, title) => openReview(blob, targets, title)} lesson={lesson} onLessonDone={() => { setLesson(null); go("sing"); }}
+        onTrack={(t, mode) => { if (!micReady) void startMic().then((ok) => ok && setTrackPlay({ track: t, mode })); else setTrackPlay({ track: t, mode }); }} />
     );
   else if (tab === "review")
     body = (
@@ -454,7 +463,7 @@ export default function App() {
   else
     body = <You progress={progress} cal={cal} priorities={priorities} onAssess={() => void beginGuided()} onSettings={() => setSettingsOpen(true)} onAdopt={(p) => setProgress(p)} />;
 
-  const focused = focus || studio !== "off";
+  const focused = focus || studio !== "off" || !!trackPlay;
   const stars = Object.values(progress.best).reduce((s, b) => s + b.stars, 0);
   if (reviewOpen && review) {
     return (

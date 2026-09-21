@@ -113,6 +113,40 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
   .review .topbar .link { display: none; }
 }
 
+/* ---------- Songs from links ---------- */
+.link-card { display: grid; gap: 0.6rem; }
+.link-row { display: flex; align-items: center; gap: 0.6rem; }
+.link-row svg { flex: none; color: var(--ink-soft); }
+.link-row input { flex: 1; min-width: 0; padding: 0.65rem 0.8rem; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: inherit; }
+.link-row input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.track-list { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.track-row { display: grid; grid-template-columns: 4.4rem 1fr; gap: 0.2rem 0.8rem; align-items: center; padding: 0.6rem; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
+.track-row img { grid-row: 1 / 3; width: 4.4rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--canvas); }
+.track-row strong { font-family: var(--display); font-weight: 500; font-size: 1.05rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.track-row .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.track-row .icon { padding: 0.45rem 0.55rem; }
+
+.track-play { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 0.5rem; padding: 0.5rem 1.25rem 1rem; }
+.yt-box { width: min(100%, 26rem); aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; background: #000; justify-self: center; box-shadow: inset 0 0 0 1px var(--line); }
+.yt-box[data-hidden="true"] { height: 0; aspect-ratio: auto; opacity: 0; pointer-events: none; }
+.yt-box .yt-host, .yt-box iframe { width: 100%; height: 100%; display: block; }
+.track-note { justify-self: center; width: min(100%, 30rem); display: grid; gap: 0.7rem; justify-items: center; text-align: center; padding: 1.4rem; }
+.track-note h2 { font-size: 1.45rem; }
+.track-stage { grid-template-columns: 1fr; }
+.track-stage .game-canvas { min-height: 12rem; }
+.track-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.track-controls .clock { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 0.9rem; }
+.track-controls .vol { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--ink-soft); }
+.track-controls .vol input { width: 6.5rem; accent-color: var(--primary); }
+.track-controls .segmented.small button { padding: 0.35rem 0.7rem; font-size: 0.82rem; }
+.track-controls button.icon { padding: 0.5rem 0.6rem; display: inline-grid; place-items: center; }
+@media (max-width: 720px) {
+  .track-play { padding: 0.25rem 0.8rem 0.8rem; gap: 0.4rem; }
+  .yt-box { width: 100%; max-height: 32vh; }
+  .track-controls .vol input { width: 5rem; }
+  .track-row .actions .small { padding: 0.4rem 0.6rem; font-size: 0.82rem; }
+}
+
 /* ---------- Home: the live stage ---------- */
 .home { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 0.6rem; padding: 0 1.25rem 1rem; }
 .stage-wrap { position: relative; display: grid; grid-template-columns: 1fr 13rem; gap: 0.75rem; min-height: 0; align-items: end; }

@@ -194,7 +194,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
       }
 
       // Stage light at the hit line.
-      const light = g.createRadialGradient(hitX, (top + bottom) / 2, 0, hitX, (top + bottom) / 2, laneH * 0.9);
+      const light = g.createRadialGradient(hitX, (top + bottom) / 2, 0, hitX, (top + bottom) / 2, Math.max(1, laneH * 0.9));
       light.addColorStop(0, fever ? "rgba(255,200,80,0.16)" : "rgba(120,150,255,0.14)");
       light.addColorStop(1, "rgba(0,0,0,0)");
       g.fillStyle = light;

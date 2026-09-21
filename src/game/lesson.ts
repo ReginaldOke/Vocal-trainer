@@ -27,6 +27,20 @@ function comfortable(cal: { low: number; high: number; comfort?: number } | null
   return { low: centre - 7, mid: centre, high: centre + 7 };
 }
 
+/**
+ * Where this singer's sirens go. They start narrow and widen as the singer earns it, never past
+ * the measured range, and sit just under where the voice sits so early sirens never have to
+ * cross the switch.
+ */
+export function sirenRange(progress: Progress, cal: { low: number; high: number; comfort?: number } | null) {
+  const c = comfortable(cal, progress.settings.voice);
+  const maxSpan = Math.max(5, Math.min(16, Math.round(c.high - c.low)));
+  const span = Math.max(4, Math.min(maxSpan, progress.sirenSpan ?? 5));
+  const sLow = Math.max(Math.round(c.low), Math.round(c.mid - span * 0.65)), sHigh = sLow + span;
+  const reps = span >= 12 ? 3 : 2;
+  return { sLow, sHigh, span, reps, mid: c.mid };
+}
+
 export function buildLesson(progress: Progress, cal: { low: number; high: number; comfort?: number } | null, nextSong: Song): LessonPlan {
   const c = comfortable(cal, progress.settings.voice);
   const recent = progress.history.slice(-6);
@@ -42,12 +56,7 @@ export function buildLesson(progress: Progress, cal: { low: number; high: number
   else if (sharp) { focus = "Letting the note float"; drill = song("octave"); }
   else { const pool = ["five-note", "arpeggio", "octave", "leaps"]; drill = song(pool[progress.plays % pool.length]); }
 
-  // Sirens start narrow and widen as the singer earns it, never past the measured range.
-  // They sit just under where the voice sits, so early sirens never have to cross the switch.
-  const maxSpan = Math.max(5, Math.min(16, Math.round(c.high - c.low)));
-  const span = Math.max(4, Math.min(maxSpan, progress.sirenSpan ?? 5));
-  const sLow = Math.max(Math.round(c.low), Math.round(c.mid - span * 0.65)), sHigh = sLow + span;
-  const reps = span >= 12 ? 3 : 2;
+  const { sLow, sHigh, span, reps } = sirenRange(progress, cal);
   const steps: LessonStep[] = [
     { kind: "glide", id: "hum-siren", title: "Hum a siren", instruction: `Lips closed, sound in the nose. Slide slowly from the bottom line to the top and back, like a distant siren. ${reps === 3 ? "Three" : "Two"} times.`, glide: { from: sLow, to: sHigh, repeats: reps, direction: "up" } },
     { kind: "glide", id: "trill-siren", title: "Lip trill siren", instruction: "Let your lips flap like a horse. Same slide, up and back. If the trill stops, you are pushing too hard.", glide: { from: sLow, to: sHigh, repeats: 2, direction: "up" } },

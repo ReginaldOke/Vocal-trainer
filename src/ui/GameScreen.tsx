@@ -22,6 +22,9 @@ import { MicMeter } from "./MicMeter";
 import { Settings as SettingsIcon, FileMusic, X, Star } from "lucide-react";
 import { GlideRun } from "../game/glide";
 import { VoiceGate } from "../audio/voiceGate";
+import { lookupTitle, parseLink, youtubeSearchUrl, youtubeThumb } from "../game/links";
+import { loadTracks, saveTracks, type Track } from "../game/tracks";
+import { Link2, Trash2 } from "lucide-react";
 import { adjustSirenSpan, backingFade, type LessonPlan, type LessonStep } from "../game/lesson";
 
 export interface ReviewTarget {
@@ -51,6 +54,8 @@ interface Props {
   /** a lesson to run step by step, instead of the song list */
   lesson: LessonPlan | null;
   onLessonDone: () => void;
+  /** open a song added from a link, as a lesson or a plain sing-along */
+  onTrack: (track: Track, mode: "lesson" | "sing") => void;
 }
 
 type Phase = "select" | "play" | "results" | "glide" | "between" | "lesson-done";
@@ -71,7 +76,31 @@ const Stars = ({ n, size = "" }: { n: number; size?: string }) => (
   <span className={`stars ${size}`} aria-label={`${n} of 5 stars`}>{[1, 2, 3, 4, 5].map((i) => <span key={i} data-on={i <= n}>★</span>)}</span>
 );
 
-export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone }: Props) {
+export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone, onTrack }: Props) {
+  const [tracks, setTracks] = useState<Track[]>(() => loadTracks());
+  const [link, setLink] = useState("");
+  const [linkNote, setLinkNote] = useState<{ text: string; search?: string; tone: "info" | "error" } | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+
+  const addLink = async () => {
+    const parsed = parseLink(link);
+    if (!parsed) { setLinkNote({ text: "That does not look like a YouTube or Spotify link.", tone: "error" }); return; }
+    setLinkBusy(true);
+    setLinkNote(null);
+    const title = await lookupTitle(parsed);
+    setLinkBusy(false);
+    if (parsed.kind === "spotify") {
+      setLinkNote({ text: title ? `Spotify only plays inside Spotify. Find “${title}” on YouTube and paste that link instead.` : "Spotify only plays inside Spotify. Find the song on YouTube and paste that link instead.", search: youtubeSearchUrl(title ?? ""), tone: "info" });
+      return;
+    }
+    const t: Track = { id: parsed.id, title: title ?? "Song from YouTube", videoId: parsed.id, addedAt: Date.now() };
+    const next = [t, ...tracks.filter((x) => x.id !== t.id)];
+    setTracks(next);
+    saveTracks(next);
+    setLink("");
+    setLinkNote({ text: `Added “${t.title}”. Start a lesson around it, or just sing along.`, tone: "info" });
+  };
+  const removeTrack = (id: string) => { const next = tracks.filter((x) => x.id !== id); setTracks(next); saveTracks(next); };
   const [phase, setPhase] = useState<Phase>("select");
   const [song, setSong] = useState<Song | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -607,6 +636,37 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <span className="fine">Any tune you have as a .mid file. It stays on this device.</span>
           {importError && <span className="error">{importError}</span>}
         </div>
+      )}
+
+      {tab === "song" && (
+        <section className="card link-card">
+          <form className="link-row" onSubmit={(e) => { e.preventDefault(); void addLink(); }}>
+            <Link2 size={18} />
+            <input type="url" inputMode="url" placeholder="Paste a YouTube or Spotify link" value={link} onChange={(e) => setLink(e.target.value)} aria-label="Song link" />
+            <button className="primary small" type="submit" disabled={linkBusy || !link.trim()}>{linkBusy ? "Looking…" : "Add"}</button>
+          </form>
+          <span className="fine">The song plays low in YouTube's player while you sing over it, with a lesson built around it.</span>
+          {linkNote && (
+            <span className={linkNote.tone === "error" ? "error" : "fine"}>
+              {linkNote.text}{linkNote.search && <> <a href={linkNote.search} target="_blank" rel="noreferrer">Search YouTube</a></>}
+            </span>
+          )}
+          {tracks.length > 0 && (
+            <ul className="track-list">
+              {tracks.map((t) => (
+                <li key={t.id} className="track-row">
+                  <img src={youtubeThumb(t.videoId)} alt="" loading="lazy" />
+                  <strong>{t.title}</strong>
+                  <div className="actions">
+                    <button className="primary small" onClick={() => onTrack(t, "lesson")}>Lesson</button>
+                    <button className="small" onClick={() => onTrack(t, "sing")}>Sing along</button>
+                    <button className="small icon" aria-label={`Remove ${t.title}`} onClick={() => removeTrack(t.id)}><Trash2 size={16} /></button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       <section className="song-grid">
