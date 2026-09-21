@@ -95,7 +95,7 @@ const NOTES_PER_MULTIPLIER = 6;
 export const MAX_MULTIPLIER = 4;
 const SLIDE_SECONDS = 0.28;
 /** flow mode: the least a note must be sung (at any pitch) before a new note can end it */
-const MIN_HOLD = 0.1;
+const MIN_HOLD = 0.2;
 /** flow mode: a pitch has to sit still this long before a jump away from it counts as a new note */
 const STABLE_BEFORE_CHANGE = 0.15;
 /** flow mode: a new pitch has to persist this long to count as a new note */

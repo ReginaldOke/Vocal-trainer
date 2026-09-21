@@ -4,6 +4,7 @@ import { Tracker, type Calibration } from "./audio/analysis";
 import type { Frame } from "./audio/frame";
 import { GuideSynth } from "./audio/synth";
 import { Backing } from "./audio/backing";
+import { VoiceGate } from "./audio/voiceGate";
 import { noteName } from "./audio/pitch";
 import { Coach, foldedCents, type Tip } from "./coach/rules";
 import { buildHold, buildScale, buildSong, scoreFromRun, type Exercise, type ExerciseScore } from "./coach/exercises";
@@ -58,6 +59,7 @@ export default function App() {
   const backing = useRef<Backing | null>(null);
   const avatar = useRef<AvatarState>({ ...EMPTY_AVATAR });
   /** background noise measured once the mic opens; shared by every screen */
+  const voice = useRef(new VoiceGate());
   const room = useRef({ gate: -55, noise: -60, ready: false, start: -1, samples: [] as number[], quiet: [] as number[], lastGate: 0 });
 
   // Everything the per-frame handler touches lives in refs so it never waits for a React render.
@@ -146,7 +148,7 @@ export default function App() {
         else {
           const sorted = [...r.samples].sort((a, b) => a - b);
           r.noise = sorted[Math.floor(sorted.length * 0.6)] ?? -60;
-          r.gate = Math.max(-62, Math.min(-45, r.noise + 8));
+          r.gate = Math.max(-62, Math.min(-30, r.noise + 10));
           engine.setGate(r.gate);
           r.ready = true;
           r.lastGate = raw.t;
@@ -154,11 +156,14 @@ export default function App() {
       } else {
         // Keep listening to the room: the floor is re-estimated from the quietest recent moments,
         // so a noisy first second (or a phone warming up) does not leave the gate stuck high.
-        if (!raw.voiced) { r.quiet.push(raw.db); if (r.quiet.length > 400) r.quiet.shift(); }
+        // Every frame counts, because a steady hum can read as "pitched" and must still be floor.
+        r.quiet.push(raw.db); if (r.quiet.length > 400) r.quiet.shift();
         if (raw.t - r.lastGate > 4 && r.quiet.length >= 60 && S.current.owner !== "studio") {
           const sorted = [...r.quiet].sort((a, b) => a - b);
-          r.noise = sorted[Math.floor(sorted.length * 0.2)];
-          r.gate = Math.max(-62, Math.min(-45, r.noise + 8));
+          // Not the very quietest moments: a television or chatter in the room has pauses, and the
+          // floor should sit at what fills the gaps between sung notes, not at those pauses.
+          r.noise = sorted[Math.floor(sorted.length * 0.35)];
+          r.gate = Math.max(-62, Math.min(-30, r.noise + 10));
           engine.setGate(r.gate);
           r.lastGate = raw.t;
         }
@@ -166,13 +171,16 @@ export default function App() {
       const s = S.current;
       if (s.owner !== "studio") return;
 
-      let f: Frame = raw.t < s.maskUntil ? { ...raw, voiced: false, midi: NaN } : raw;
+      // Only singing gets past here; the room's noise is treated as silence.
+      voice.current.floorDb = s.noiseDb;
+      const heard = s.step === "mic" ? raw : voice.current.apply(raw);
+      let f: Frame = heard.t < s.maskUntil ? { ...heard, voiced: false, midi: NaN } : heard;
       const run = s.running && s.run && !s.run.finished ? s.run : null;
       const target = run ? run.target : null;
 
       const bk = backing.current;
       if (bk && s.running) {
-        const gate = Math.max(-62, Math.min(-35, s.noiseDb + 8));
+        const gate = Math.max(-62, Math.min(-30, s.noiseDb + 10));
         if (bk.audible() && f.voiced && f.db < gate + 5 && bk.tones().some((m) => Math.abs(foldedCents(f.midi, m)) < 25)) { f = { ...raw, voiced: false, midi: NaN }; bk.bleed(); }
         bk.tick(f.voiced);
       }
@@ -213,7 +221,7 @@ export default function App() {
           const sorted = [...s.noise].sort((a, b) => a - b);
           s.noiseDb = sorted[Math.floor(sorted.length * 0.9)];
           s.noise = [];
-          engine.setGate(Math.max(-62, Math.min(-35, s.noiseDb + 8)));
+          engine.setGate(Math.max(-62, Math.min(-30, s.noiseDb + 10)));
           view.current.floorDb = Math.min(-40, s.noiseDb);
           setMic((m) => ({ ...m, measured: true }));
         } else {

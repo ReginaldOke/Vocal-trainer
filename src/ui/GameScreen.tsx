@@ -21,6 +21,7 @@ import { CoachDrawer } from "./CoachDrawer";
 import { MicMeter } from "./MicMeter";
 import { Settings as SettingsIcon, FileMusic, X, Star } from "lucide-react";
 import { GlideRun } from "../game/glide";
+import { VoiceGate } from "../audio/voiceGate";
 import { adjustSirenSpan, backingFade, type LessonPlan, type LessonStep } from "../game/lesson";
 
 export interface ReviewTarget {
@@ -115,10 +116,13 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     tipAt: 0,
     lastUi: 0,
     lastClock: 0,
+    stepAt: 0,
+    stepWanted: -1,
     finishing: false,
     /** the most important coaching remark since the last phrase ended; shown when the phrase does */
     pending: null as Tip | null,
     glide: null as GlideRun | null,
+    voice: new VoiceGate(),
     lastCue: -10,
     earKey: -2,
     heardAt: 0,
@@ -190,12 +194,15 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   }, [engine, synth, onProgress]);
 
   useEffect(() => {
-    return engine.onFrame((raw) => {
+    return engine.onFrame((heard) => {
       const g = G.current;
-      const now = raw.t;
+      const now = heard.t;
       const dt = g.lastT ? Math.min(0.1, now - g.lastT) : 0;
       g.lastT = now;
       const { gate, noise } = room.current;
+      // Only singing gets past here; the room's noise is treated as silence.
+      g.voice.floorDb = noise;
+      const raw = g.voice.apply(heard);
 
       const run = g.run;
       const a = avatar.current;
@@ -322,7 +329,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       }
     }
     applyBuddyVoice(st.buddyVoice);
-    if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing, __run: run, __recStart: now });
+    if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing, __run: run, __recStart: now, __voice: g.voice, __room: room.current });
     g.recStart = engine.startRecording() ?? now;
     g.earKey = -2;
     g.heardAt = engine.now();
@@ -337,6 +344,10 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   const startStep = useCallback((i: number) => {
     if (!lesson) return;
     const g = G.current;
+    // A double tap on "Next" while the screen is still catching up must not skip a step.
+    if (i === g.stepWanted && performance.now() - g.stepAt < 800) return;
+    g.stepWanted = i;
+    g.stepAt = performance.now();
     const step: LessonStep | undefined = lesson.steps[i];
     setStepIndex(i);
     setStepResult(null);
@@ -354,6 +365,9 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       view.current.run = null;
       // A hum or a trill is quiet: let more of it through than the room gate normally would.
       engine.setGate(Math.max(-70, room.current.gate - 6));
+      // Sirens start right at the bottom line, so the proof-of-voice delay is kept short here.
+      g.voice.marginDb = 7;
+      g.voice.onsetSeconds = 0.1;
       g.glide = new GlideRun(step.glide, engine.now());
       view.current.glide = g.glide;
       if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __glide: g.glide, __run: null });
@@ -388,6 +402,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     g.glide = null;
     view.current.glide = null;
     engine.setGate(room.current.gate);
+    g.voice.marginDb = 12;
+    g.voice.onsetSeconds = 0.2;
     if (g.inLesson) { g.inLesson = false; setPhase("select"); onLessonDone(); return; }
     g.backing?.setTarget(null);
     g.buddy?.stop();

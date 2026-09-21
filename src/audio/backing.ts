@@ -125,7 +125,7 @@ export class Backing {
   /** True while speaker output could be mistaken for singing: the sustained tone, or the attack of a piano strike. */
   audible() {
     if (this.mode !== "quiet") return false;
-    return this.style === "tone" ? this.target !== null : this.ctx.currentTime - this.piano.lastStrikeAt < 0.35;
+    return this.style === "tone" ? this.target !== null : this.ctx.currentTime - this.piano.lastStrikeAt < 0.8;
   }
 
   /** The mic picked the backing up: get quieter. */

@@ -86,7 +86,10 @@ export class AudioEngine {
     this.disconnect();
     // Browser "voice call" processing wrecks pitch and volume measurements, so switch it all off.
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
+      // The backing plays through the speakers, so the browser's echo cancellation is wanted: it
+      // removes the app's own sound from the mic. Noise suppression trims fans and traffic. Gain
+      // control stays off so levels mean something.
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 },
     });
     this.source = ctx.createMediaStreamSource(this.stream);
     this.source.connect(this.analyser!);
