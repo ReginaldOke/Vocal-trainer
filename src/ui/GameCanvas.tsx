@@ -488,7 +488,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
             g.fillStyle = run.listening ? "rgba(255,255,255,0.92)" : "#3df0a2";
             g.shadowColor = run.listening ? "rgba(120,150,255,0.9)" : "#3df0a2"; g.shadowBlur = 24;
             g.font = `800 ${narrow ? 26 : 40}px "Inter", sans-serif`;
-            g.fillText(run.listening ? "Listen…" : "Your turn", W * 0.6, top + laneH * 0.22);
+            g.fillText(run.listening ? (run.previewing ? "The whole song…" : "Listen…") : "Your turn", W * 0.6, top + laneH * 0.22);
             g.shadowBlur = 0; g.globalAlpha = 1;
             g.textAlign = "left"; g.textBaseline = "alphabetic";
           }

@@ -173,7 +173,8 @@ export class GameRun {
   private listenFrom = 0;
   private listenTo = 0;
   private listenAt = 0;
-  private previewing = false;
+  /** echo mode: the whole song is being played through before singing resumes */
+  previewing = false;
 
   constructor(public song: PreparedSong, public diff: Difficulty, public mode: Mode, public startAt: number) {
     this.notes = song.notes.map((n) => ({
@@ -252,10 +253,20 @@ export class GameRun {
     this.events.push({ type: "listen", from, to: this.listenTo, preview });
   }
 
-  /** Hear the whole song from the top, then start again at the first phrase. Only before any singing. */
+  private resumeFrom = 0;
+
+  /** Hear the whole song from the top, then carry on from the phrase the singer was on. */
   preview(now: number) {
-    if (this.mode !== "echo" || this.notes.some((n) => n.judged)) return false;
-    this.cur = 0;
+    if (this.mode !== "echo" || this.finished) return false;
+    // Back to the start of the current phrase, so a half-sung phrase is sung again in full.
+    const phraseStart = this.listening ? this.listenFrom : this.song.phraseEnds.filter((e) => e < this.cur).map((e) => e + 1).pop() ?? 0;
+    for (let i = phraseStart; i <= this.phraseEndFrom(phraseStart); i++) {
+      const n = this.notes[i];
+      if (n.judged) continue;
+      n.sung = 0; n.held = 0; n.errs = []; n.bins.fill(-1); n.onAt = -1; n.sungAt = -1; n.endedBy = "";
+    }
+    this.resumeFrom = phraseStart;
+    this.armed = false;
     this.beginListen(0, now, true);
     return true;
   }
@@ -268,7 +279,7 @@ export class GameRun {
     this.pushTrace({ ...f, voiced: false, midi: NaN }, now, null, null, 0);
     if (t < span + 0.7) return;
     this.listening = false;
-    if (this.previewing) { this.previewing = false; this.beginListen(0, now, false); return; }
+    if (this.previewing) { this.previewing = false; this.beginListen(this.resumeFrom, now, false); return; }
     this.cur = this.listenFrom;
     this.pos = first.start;
     this.slide = null;

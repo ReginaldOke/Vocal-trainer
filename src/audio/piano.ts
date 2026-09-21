@@ -60,11 +60,22 @@ export class Piano {
     });
   }
 
+  private melody = new Set<GainNode>();
+
+  /** Cut short whatever melody is playing or scheduled. */
+  hushMelody() {
+    const now = this.ctx.currentTime;
+    for (const g of this.melody) { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.02); }
+    this.melody.clear();
+    this.lastStrikeAt = Math.min(this.lastStrikeAt, now);
+  }
+
   /** One melody note with a short ring, for playing a phrase the singer will sing back. */
   note(midi: number, when: number, dur: number, velocity = 0.8) {
     if (!this.tone) return;
     this.lastStrikeAt = Math.max(this.lastStrikeAt, when + dur);
     const gain = this.ctx.createGain();
+    this.melody.add(gain);
     gain.gain.setValueAtTime(0, when);
     gain.gain.linearRampToValueAtTime(velocity * 0.34, when + 0.008);
     gain.gain.setTargetAtTime(velocity * 0.18, when + 0.03, 0.25);
@@ -82,7 +93,7 @@ export class Piano {
       osc.start(when);
       osc.stop(when + dur + 0.8);
       this.voices.add(osc);
-      osc.onended = () => { this.voices.delete(osc); gain.disconnect(); };
+      osc.onended = () => { this.voices.delete(osc); this.melody.delete(gain); gain.disconnect(); };
     }
   }
 

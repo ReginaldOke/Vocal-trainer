@@ -329,6 +329,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           const phrase = run.notes.slice(e.from, e.to + 1).map((n) => ({ midi: n.midi, start: n.start - first.start, dur: Math.max(0.12, n.dur * 0.92) }));
           // Ear drills play a cue rather than the answer: the note below, the note itself, or nothing.
           const melody = ear === "silent" ? [] : ear === "interval" ? [{ midi: first.midi - (run.song.song.earInterval ?? 7), start: 0, dur: 0.7 }] : phrase;
+          if (!melody.length) backing.hushMelody();
           const end = melody.length ? backing.playMelody(melody) : engine.ctx.currentTime;
           g.maskUntil = now + (end - engine.ctx.currentTime) + 0.4;
         }
