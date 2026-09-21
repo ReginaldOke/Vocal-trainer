@@ -283,10 +283,10 @@ export default function App() {
     go("songs");
   };
 
+  /** The take review is an overlay, so results and lessons underneath keep their state. */
   const openReview = (blob: Blob, targets: ReviewTarget[] | null, title: string) => {
     setReview({ blob, targets, title });
     setReviewOpen(true);
-    setTab("review");
   };
 
   // ---------- Guided assessment ----------
@@ -371,6 +371,7 @@ export default function App() {
     s.run = run;
     gameView.current.run = run;
     gameView.current.effects = [];
+    if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __run: run });
     tracker.reset();
     tracker.calibration = cal;
     coach.reset();
@@ -422,9 +423,7 @@ export default function App() {
         onReview={(blob, targets, title) => openReview(blob, targets, title)} lesson={lesson} onLessonDone={() => { setLesson(null); go("sing"); }} />
     );
   else if (tab === "review")
-    body = reviewOpen && review ? (
-      <TakeReview blob={review.blob} targets={review.targets} title={review.title} onClose={() => setReviewOpen(false)} />
-    ) : (
+    body = (
       <main className="page">
         <div className="page-head"><h1>Review</h1></div>
         <section className="card" style={{ display: "grid", gap: "0.8rem", justifyItems: "start" }}>
@@ -443,8 +442,16 @@ export default function App() {
   else
     body = <You progress={progress} cal={cal} priorities={priorities} onAssess={() => void beginGuided()} onSettings={() => setSettingsOpen(true)} onAdopt={(p) => setProgress(p)} />;
 
-  const focused = focus || studio !== "off" || (tab === "review" && reviewOpen && !!review);
+  const focused = focus || studio !== "off";
   const stars = Object.values(progress.best).reduce((s, b) => s + b.stars, 0);
+  if (reviewOpen && review) {
+    return (
+      <>
+        <TakeReview blob={review.blob} targets={review.targets} title={review.title} onClose={() => setReviewOpen(false)} />
+        <div className="shell" data-focus={focused} hidden>{body}</div>
+      </>
+    );
+  }
   return (
     <div className="shell" data-focus={focused}>
       {!focused && (

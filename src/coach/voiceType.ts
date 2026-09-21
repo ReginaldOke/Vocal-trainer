@@ -1,4 +1,3 @@
-import { noteName } from "../audio/pitch";
 
 const TYPES = [
   { name: "Bass", low: 40, high: 64 },
@@ -24,7 +23,7 @@ export function guessVoiceType(low: number, high: number): VoiceTypeGuess {
   const close = second.cost - first.cost < 1.5;
   return {
     label: close ? `${first.t.name} or ${second.t.name.toLowerCase()}` : first.t.name,
-    note: `Based on a comfortable range of ${noteName(low)} to ${noteName(high)}. Range is only a hint: where your voice sits most easily and where it switches from full to light decide the real answer.`,
+    note: "Range is only a hint. Where your voice sits most easily, and where it switches from full to light, decide the real answer.",
   };
 }
 

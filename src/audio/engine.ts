@@ -10,6 +10,7 @@ export class AudioEngine {
   ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private frameAnalyser: FrameAnalyser | null = null;
+  private lastStep = 0;
   private buf = new Float32Array(BUFFER_SIZE);
   private source: AudioNode | null = null;
   private stream: MediaStream | null = null;
@@ -57,6 +58,16 @@ export class AudioEngine {
       this.analyser.smoothingTimeConstant = 0;
       this.frameAnalyser = new FrameAnalyser(this.ctx.sampleRate);
       this.t0 = this.ctx.currentTime;
+      // The audio thread keeps calling back even when the page is hidden or the window is covered
+      // and the browser slows animation frames and timers to a crawl. When that happens, the
+      // analysis is driven from here instead, so a note sung with the screen dimmed still counts.
+      const keep = this.ctx.createScriptProcessor(2048, 1, 1);
+      const mute = this.ctx.createGain();
+      mute.gain.value = 0;
+      this.analyser.connect(keep);
+      keep.connect(mute);
+      mute.connect(this.ctx.destination);
+      keep.onaudioprocess = () => { if (this.mode !== "idle" && performance.now() - this.lastStep > 45) this.step(); };
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
     return this.ctx;
@@ -164,9 +175,15 @@ export class AudioEngine {
 
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
+    this.step();
+  };
+
+  /** One analysis pass over the latest audio, handed to every listener. */
+  private step() {
     if (!this.analyser || !this.frameAnalyser) return;
+    this.lastStep = performance.now();
     this.analyser.getFloatTimeDomainData(this.buf);
     const frame = this.frameAnalyser.analyse(this.buf, this.now());
     this.listeners.forEach((fn) => fn(frame));
-  };
+  }
 }

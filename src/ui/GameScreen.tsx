@@ -114,6 +114,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     recStart: 0,
     tipAt: 0,
     lastUi: 0,
+    lastClock: 0,
     finishing: false,
     /** the most important coaching remark since the last phrase ended; shown when the phrase does */
     pending: null as Tip | null,
@@ -142,6 +143,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   const settings = progress.settings;
 
   useEffect(() => { onFocus(phase !== "select"); }, [phase, onFocus]);
+  useEffect(() => () => onFocus(false), [onFocus]);
 
   const applyBuddyVoice = useCallback((on: boolean) => {
     const g = G.current;
@@ -200,7 +202,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       a.voiced = raw.voiced; a.midi = raw.midi; a.db = raw.db; a.h1h2 = raw.h1h2; a.f1 = raw.f1; a.f2 = raw.f2; a.floorDb = noise;
       a.q = run && !run.finished ? run.liveQ : 0;
       a.fever = !!run && run.fever.active;
-      if (g.inLesson && now - g.lastUi > 0.5) setClock(now - g.lessonStart);
+      if (g.inLesson && now - g.lastClock > 0.5) { g.lastClock = now; setClock(now - g.lessonStart); }
       const gl = g.glide;
       if (gl && !gl.finished) {
         gl.update(raw, now);
@@ -354,6 +356,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       engine.setGate(Math.max(-70, room.current.gate - 6));
       g.glide = new GlideRun(step.glide, engine.now());
       view.current.glide = g.glide;
+      if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __glide: g.glide, __run: null });
       g.backing?.setTarget(null);
       cueGlide(step.glide.from, step.glide.to);
       setPhase("glide");
@@ -546,7 +549,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <ul>{notes.map((t) => <li key={t}>{t}</li>)}</ul>
           {trouble.length > 0 && (
             <p className="fine" style={{ marginTop: "0.5rem" }}>
-              Work on: {trouble.map((n) => `${n.lyric?.replace(/-$/, "") || noteName(n.midi)} (${noteName(n.midi)}, ${offWords(n.cents)})`).join(", ")}.
+              Work on: {trouble.map((n) => `${n.lyric?.replace(/-$/, "") || noteName(n.midi)} (${noteName(n.midi)}, ${!Number.isNaN(n.cents) && Math.abs(n.cents) < 20 ? "unsteady" : offWords(n.cents)})`).join(", ")}.
             </p>
           )}
         </section>

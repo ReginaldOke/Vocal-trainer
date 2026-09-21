@@ -487,7 +487,7 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
                 ))}
               </ul>
             )}
-            <p className="fine">Playhead at {fmtT(clock)}. {targets ? "Colour is measured against the song's notes." : "Without a song, colour is measured against the nearest note; steady vibrato is judged by its centre."}</p>
+            <p className="fine">Playhead at {fmtT(clock)}. {targets ? "Colour is measured against the song's notes." : "Without a song, colour is measured against the nearest note; a steady natural wobble is judged by its centre."}</p>
           </section>
         </>
       )}

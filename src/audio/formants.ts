@@ -18,6 +18,8 @@ export class FormantTracker {
   private rate: number;
   private work = new Float32Array(0);
   private win = new Float32Array(0);
+  /** the last frame's spectral peaks, for tuning */
+  lastPeaks: number[][] = [];
 
   constructor(sampleRate: number) {
     this.decim = Math.max(1, Math.round(sampleRate / DECIM_RATE));
@@ -91,15 +93,22 @@ export class FormantTracker {
       }
     }
     if (!peaks.length) return null;
+    this.lastPeaks = peaks.map((p) => [Math.round(p.f), +(p.h / Math.max(...peaks.map((q) => q.h))).toFixed(2), p.width]);
     const top = Math.max(...peaks.map((p) => p.h));
-    const strong = peaks.filter((p) => p.h >= top * 0.04 && p.width < 900).sort((p, q) => p.f - q.f);
+    // Very broad humps are the model's shelf, not resonances. A moderately broad hump low down is
+    // real: two rounded-vowel resonances fused together, which is split below.
+    const strong = peaks.filter((p) => p.h >= top * 0.04 && p.width < 1600).sort((p, q) => p.f - q.f);
     if (strong.length >= 2) {
-      // A broad, lone low hump with only a weak second peak is two rounded-vowel resonances fused together.
       const [p1, p2] = strong;
       if (p1.f < 900 && p1.width > 300 && p2.h < p1.h * 0.25) return { f1: p1.f * 0.72, f2: p1.f * 1.35 };
       return { f1: p1.f, f2: p2.f };
     }
-    if (strong.length === 1 && strong[0].f < 950) return { f1: strong[0].f * 0.72, f2: strong[0].f * 1.35 };
+    if (strong.length === 1) {
+      const p = strong[0];
+      if (p.f < 1000) return { f1: p.f * 0.72, f2: p.f * 1.35 };
+      // A lone high resonance with nothing below it: the low one sits under the window. Bright vowel.
+      if (p.f > 2000) return { f1: 300, f2: p.f };
+    }
     return null;
   }
 }
@@ -111,8 +120,10 @@ export class FormantTracker {
  */
 export function classifyVowel(fm: Formants): { vowel: Vowel; confidence: number } {
   const { f1, f2 } = fm;
-  if (f2 < 1300) return { vowel: "oo", confidence: Math.min(1, (1300 - f2) / 400 + 0.3) };
+  // The open vowel is told by its high first resonance alone: a low voice's "ah" has a second
+  // resonance as low as a rounded vowel's, so that test has to come first.
   if (f1 > 650) return { vowel: "ah", confidence: Math.min(1, (f1 - 650) / 200 + 0.3) };
+  if (f2 < 1300) return { vowel: "oo", confidence: Math.min(1, (1300 - f2) / 400 + 0.3) };
   if (f2 > 2100) return { vowel: "ee", confidence: Math.min(1, (f2 - 2100) / 400 + 0.3) };
   return { vowel: "eh", confidence: Math.min(1, Math.min(f2 - 1300, 2100 - f2) / 400 + 0.3) };
 }

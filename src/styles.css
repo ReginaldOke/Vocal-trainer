@@ -110,6 +110,7 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
   .bottomnav button { border: 0; background: transparent; border-radius: 14px; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.25rem; min-height: 3rem; font-size: 0.72rem; font-weight: 600; color: var(--ink-mute); }
   .bottomnav button[aria-current="page"] { color: var(--ink); background: var(--surface-2); }
   .bottomnav button svg { display: block; }
+  .review .topbar .link { display: none; }
 }
 
 /* ---------- Home: the live stage ---------- */

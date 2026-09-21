@@ -229,7 +229,9 @@ export function findPhraseEnds(notes: PreparedNote[], beat: number): number[] {
     const n = notes[i], next = notes[i + 1];
     if (!next) { ends.push(i); break; }
     const gap = next.start - (n.start + n.dur);
-    const longNote = n.dur >= beat * 1.9 && !(n.lyric ?? "").endsWith("-");
+    // A note that holds for two beats or more (measured onset to onset, since written lengths are
+    // trimmed a little for breath) closes a phrase unless the word carries on.
+    const longNote = next.start - n.start >= beat * 1.9 && !(n.lyric ?? "").endsWith("-");
     if (gap > 0.25 || longNote) ends.push(i);
   }
   return ends;
