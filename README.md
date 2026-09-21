@@ -2,7 +2,7 @@
 
 A real-time singing coach that runs entirely in the browser. It listens through the microphone, tracks pitch, volume, register and effort, and gives short teacher-style tips while you sing.
 
-You land straight on the **Sing** stage: tap once to open the mic, sing anything, and the line, the note readout and Pip the songbird follow your voice. A "Next up" card suggests the easiest song you have not yet cleared. Four tabs (Sing, Songs, Review, You) hold everything else; settings live in a sheet, and play, results, the assessment and the take review take over the whole screen. The look is a dark take on Brilliant: a modern serif for headlines, Inter for everything else, pill buttons with a pressed edge, tinted illustration tiles, and as little text on screen as possible.
+You land straight on the **Sing** stage: tap once to open the mic, sing anything, and the line, the note readout and your singing partner follow your voice. A "Next up" card suggests the easiest song you have not yet cleared. Four tabs (Sing, Songs, Review, You) hold everything else; settings live in a sheet, and play, results, the assessment and the take review take over the whole screen. The look is a dark take on Brilliant: a modern serif for headlines, Inter for everything else, pill buttons with a pressed edge, tinted illustration tiles, and as little text on screen as possible.
 
 The main event is the **arcade**: songs and drills scroll along a Guitar Hero style highway, your voice is a glowing puck at the hit line, and notes light up green as you sing them in tune. Combos, a score multiplier, a fever mode, star ratings, XP levels and badges reward clean pitch. Everything is saved in the browser.
 
@@ -47,7 +47,7 @@ src/audio/   pure TypeScript signal processing, no DOM except engine.ts
   offline.ts   the same analysis over a whole clip, evenly spaced; analysis.worker.ts runs it off the main thread
 src/coach/   rules.ts (live tips), exercises.ts (targets and scoring), voiceType.ts, report.ts
 src/game/    songs.ts (the library, transposable), scoring.ts (GameRun: flow and tempo modes, combos, fever), progress.ts (localStorage)
-src/ui/      Home (the live stage), GameCanvas (the highway), GameScreen (songs, play, results), SettingsSheet, You (level, range, badges), SingerAvatar (Pip), TakeReview (zoomable pitch map), PitchCanvas, Panels
+src/ui/      Home (the live stage), GameCanvas (the highway), GameScreen (songs, play, results), SettingsSheet, You (level, range, badges), SingerAvatar and avatars.ts (the five partners), TakeReview (zoomable pitch map), PitchCanvas, Panels
 test/        offline.ts runs the same pipeline over a WAV in Node; synth.ts checks vibrato, register and crack detection
 ```
 
@@ -93,7 +93,7 @@ Until then the You tab says "Saving on this device only" and everything still wo
 
 Phones cancel echo whatever the page asks, and that cancellation removes a voice singing the same note the speaker is playing. So on touch devices the piano cues each note once and then stays quiet while you sing, rather than pulsing under you; a small level bar in the top bar shows whether the app is hearing you, and the coach speaks through a drawer under the stage that never covers the notes. Sirens start a fourth wide, sit below the switch in your voice, and widen by a note after each smooth, complete siren.
 
-The layout is phone-first below 720px: a bottom tab bar, the stage filling the screen with Pip tucked into a corner, two-column song tiles, and every control at least 44px tall. Safe-area insets and the dynamic viewport height are respected, double-tap zoom is off, and the screen stays awake while the mic is open (where the Wake Lock API exists). The highway and Pip render at a lower pixel ratio with fewer glows on small screens to keep 60 fps. Add it to the home screen and it runs full-screen as a web app.
+The layout is phone-first below 720px: a bottom tab bar, the stage filling the screen with the partner tucked into a corner, two-column song tiles, and every control at least 44px tall. Safe-area insets and the dynamic viewport height are respected, double-tap zoom is off, and the screen stays awake while the mic is open (where the Wake Lock API exists). The highway and the partner render at a lower pixel ratio with fewer glows on small screens to keep 60 fps. Add it to the home screen and it runs full-screen as a web app.
 
 ## Towards iOS
 
