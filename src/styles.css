@@ -124,6 +124,7 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
 .track-row img { grid-row: 1 / 3; width: 4.4rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--canvas); }
 .track-row strong { font-family: var(--display); font-weight: 500; font-size: 1.05rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .track-row .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.track-row .actions button { flex: 0 0 auto; }
 .track-row .icon { padding: 0.45rem 0.55rem; }
 
 .track-play { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 0.5rem; padding: 0.5rem 1.25rem 1rem; }
