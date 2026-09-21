@@ -94,7 +94,7 @@ const DEFAULT: Progress = {
   updatedAt: 0,
   best: {},
   achievements: {},
-  settings: { difficulty: "medium", mode: "echo", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false, buddy: "frog" },
+  settings: { difficulty: "medium", mode: "tempo", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false, buddy: "frog" },
 };
 
 export function loadProgress(): Progress {
@@ -103,8 +103,8 @@ export function loadProgress(): Progress {
     if (!raw) return structuredClone(DEFAULT);
     const p = JSON.parse(raw) as Partial<Progress>;
     const merged: Progress = { ...structuredClone(DEFAULT), ...p, settings: { ...DEFAULT.settings, ...(p.settings ?? {}) } };
-    // Singing at your own pace over chords did not work for people; hearing each part first does.
-    if (merged.settings.mode === "flow") merged.settings.mode = "echo";
+    // Singing along in time, with the tune playing, is what works; older paces are moved over once.
+    if (!(p as { paceV2?: boolean }).paceV2) { merged.settings.mode = "tempo"; (merged as Progress & { paceV2?: boolean }).paceV2 = true; }
     return merged;
   } catch {
     return structuredClone(DEFAULT);

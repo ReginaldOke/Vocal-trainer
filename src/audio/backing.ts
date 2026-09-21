@@ -82,11 +82,11 @@ export class Backing {
   }
 
   /** Play a melody on the piano, clearly, for the singer to hear and sing back. Returns when it ends. */
-  playMelody(notes: { midi: number; start: number; dur: number }[], at = this.ctx.currentTime + 0.05) {
+  playMelody(notes: { midi: number; start: number; dur: number }[], at = this.ctx.currentTime + 0.05, level = 1) {
     this.piano.hushMelody();
     this.piano.setLevel(Math.max(this.mode === "full" ? 0.9 : this.level, 0.5), 0.01);
     let end = at;
-    for (const n of notes) { this.piano.note(n.midi, at + n.start, n.dur); end = Math.max(end, at + n.start + n.dur); }
+    for (const n of notes) { this.piano.note(n.midi, at + n.start, n.dur, 0.8 * level); end = Math.max(end, at + n.start + n.dur); }
     if (this.previewTimer) clearTimeout(this.previewTimer);
     this.previewTimer = setTimeout(() => { this.previewTimer = null; this.apply(); }, (end - this.ctx.currentTime) * 1000 + 1200);
     return end;

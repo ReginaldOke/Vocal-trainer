@@ -56,6 +56,8 @@ interface Props {
   onLessonDone: () => void;
   /** open a song added from a link, as a lesson or a plain sing-along */
   onTrack: (track: Track, mode: "lesson" | "sing") => void;
+  /** learn a song the karaoke way: hear it, line by line, then through */
+  onPractice?: (song: Song) => void;
 }
 
 type Phase = "select" | "play" | "results" | "glide" | "between" | "lesson-done";
@@ -76,7 +78,7 @@ const Stars = ({ n, size = "" }: { n: number; size?: string }) => (
   <span className={`stars ${size}`} aria-label={`${n} of 5 stars`}>{[1, 2, 3, 4, 5].map((i) => <span key={i} data-on={i <= n}>★</span>)}</span>
 );
 
-export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone, onTrack }: Props) {
+export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone, onTrack, onPractice }: Props) {
   const [tracks, setTracks] = useState<Track[]>(() => loadTracks());
   const [link, setLink] = useState("");
   const [linkNote, setLinkNote] = useState<{ text: string; search?: string; tone: "info" | "error" } | null>(null);
@@ -388,6 +390,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         const ctxStart = engine.ctx.currentTime;
         if (st.metronome) synth.clickTrack(ctxStart, prepared.beat, s.beatsPerBar, 0, prepared.end);
         if (st.guide === "full") synth.playSequence(prepared.notes.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), ctxStart);
+        else if (!s.ear) g.backing.playMelody(prepared.notes.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), ctxStart, 0.45);
       }
     }
     applyBuddyVoice(st.buddyVoice);
@@ -712,7 +715,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           const art = SONG_ART[s.id] ?? { emoji: s.custom ? "🎤" : "🎵", tint: "peach" as const };
           return (
             <div key={s.id} className="song-card-wrap">
-              <button className="song-card" onClick={() => play(s)}>
+              <button className="song-card" onClick={() => (s.kind === "song" && onPractice ? onPractice(s) : play(s))}>
                 <span className={`art ${art.tint}`}>{art.emoji}</span>
                 <strong>{s.title}</strong>
                 <span className="meta"><span className="song-tier" aria-label={`tier ${s.tier}`}>{[1, 2, 3, 4, 5].map((k) => <i key={k} data-on={k <= s.tier} />)}</span>{noteName(tonic + span.lo)}–{noteName(tonic + span.hi)}</span>

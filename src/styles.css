@@ -146,6 +146,10 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
   .yt-box { width: 100%; max-height: 32vh; }
   .track-controls .vol input { width: 5rem; }
   .track-row .actions .small { padding: 0.4rem 0.6rem; font-size: 0.82rem; }
+  .practice .stage-wrap { align-items: stretch; }
+  .practice .stage-wrap > .game-canvas { height: 100%; min-height: 12rem; }
+  .practice .track-controls { gap: 0.35rem; }
+  .practice .track-controls .segmented.small button { padding: 0.35rem 0.55rem; font-size: 0.78rem; }
 }
 
 /* ---------- The app's own audio player ---------- */
@@ -159,6 +163,13 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
 .buddy { touch-action: pan-y; cursor: grab; }
 .buddy:active { cursor: grabbing; }
 .lesson-between .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+
+/* ---------- Learn a song ---------- */
+.practice { grid-template-rows: auto auto minmax(0, 1fr) auto auto; }
+.lyric-line { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.15rem 0.45rem; padding: 0.35rem 0.5rem; font-family: var(--display); font-size: clamp(1.15rem, 3.2vw, 1.7rem); color: var(--ink-soft); min-height: 2.4rem; }
+.lyric-line span[data-on="true"] { color: var(--gold); font-weight: 600; text-shadow: 0 0 18px rgba(255, 209, 102, 0.55); }
+.practice-opts { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+.practice .track-controls { justify-content: center; }
 
 /* ---------- Home: the live stage ---------- */
 .home { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 0.6rem; padding: 0 1.25rem 1rem; }

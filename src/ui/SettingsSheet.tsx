@@ -36,8 +36,8 @@ export function SettingsSheet({ settings, calibrated, onChange, onClose }: Props
 
         <div className="setting">
           <span className="setting-label">Pace</span>
-          <Chips value={settings.mode} options={[{ id: "echo", text: "Hear it, sing it back" }, { id: "flow", text: "Notes wait for me" }, { id: "tempo", text: "In tempo" }]} onPick={(v) => onChange("mode", v)} />
-          <p className="fine">{settings.mode === "flow" ? "Each note sits on the line until you have sung it." : "Notes scroll at the song's speed with a count-in."}</p>
+          <Chips value={settings.mode} options={[{ id: "tempo", text: "Sing along in time" }, { id: "echo", text: "Hear it, sing it back" }, { id: "flow", text: "Notes wait for me" }]} onPick={(v) => onChange("mode", v)} />
+          <p className="fine">{settings.mode === "flow" ? "Each note sits on the line until you have sung it." : "The tune plays quietly and the notes scroll in time, with a count-in."}</p>
         </div>
 
         <div className="setting">

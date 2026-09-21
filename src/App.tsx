@@ -20,6 +20,7 @@ import { PitchCanvas, type CanvasView, type TracePoint } from "./ui/PitchCanvas"
 import { Meters, NoteReadout, RangeBar, TipCard, type Readout } from "./ui/Panels";
 import { GameScreen, type ReviewTarget } from "./ui/GameScreen";
 import { TrackScreen } from "./ui/TrackScreen";
+import { SongPractice } from "./ui/SongPractice";
 import { Player } from "./ui/Player";
 import type { Track } from "./game/tracks";
 import { TakeReview } from "./ui/TakeReview";
@@ -112,6 +113,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [studio, setStudio] = useState<"off" | "guided" | "report">("off");
   const [trackPlay, setTrackPlay] = useState<{ track: Track; mode: "lesson" | "sing" } | null>(null);
+  const [practice, setPractice] = useState<Song | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("ready");
   const [readout, setReadout] = useState<Readout>(EMPTY);
@@ -160,8 +162,9 @@ export default function App() {
       } else {
         // Keep listening to the room: the floor is re-estimated from the quietest recent moments,
         // so a noisy first second (or a phone warming up) does not leave the gate stuck high.
-        // Every frame counts, because a steady hum can read as "pitched" and must still be floor.
-        r.quiet.push(raw.db); if (r.quiet.length > 400) r.quiet.shift();
+        // A steady hum can read as "pitched" and must still count as floor, but singing must not:
+        // only voiced frames close to the current floor go in.
+        if (!raw.voiced || raw.db < r.noise + 10) { r.quiet.push(raw.db); if (r.quiet.length > 400) r.quiet.shift(); }
         if (raw.t - r.lastGate > 4 && r.quiet.length >= 60 && S.current.owner !== "studio") {
           const sorted = [...r.quiet].sort((a, b) => a - b);
           // Not the very quietest moments: a television or chatter in the room has pauses, and the
@@ -425,7 +428,12 @@ export default function App() {
   const rangeOk = step === "range-low" ? Number.isFinite(range.low) : Number.isFinite(range.high) && range.high - range.low >= 7;
 
   let body: React.ReactNode;
-  if (trackPlay)
+  if (practice)
+    body = (
+      <SongPractice engine={engine} tracker={tracker} coach={coach} synth={synth.current} avatar={avatar} room={room} progress={progress} calibrated={cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null}
+        song={practice} onProgress={setProgress} onBuddy={(k) => setSetting("buddy", k)} onReview={(blob, targets, title) => { setPractice(null); openReview(blob, targets, title); }} onClose={() => setPractice(null)} />
+    );
+  else if (trackPlay)
     body = (
       <TrackScreen engine={engine} tracker={tracker} coach={coach} avatar={avatar} room={room} progress={progress} calibrated={cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null}
         track={trackPlay.track} mode={trackPlay.mode} onProgress={setProgress} onReview={(blob, title) => { setTrackPlay(null); openReview(blob, null, title); }} onClose={() => setTrackPlay(null)} />
@@ -442,7 +450,8 @@ export default function App() {
       <GameScreen engine={engine} tracker={tracker} coach={coach} synth={synth.current} calibrated={cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null} avatar={avatar} room={room}
         progress={progress} onProgress={setProgress} autoplay={autoplay} onAutoplayed={() => setAutoplay(null)} onFocus={setFocus}
         onReview={(blob, targets, title) => openReview(blob, targets, title)} lesson={lesson} onLessonDone={() => { setLesson(null); go("sing"); }}
-        onTrack={(t, mode) => { if (!micReady) void startMic().then((ok) => ok && setTrackPlay({ track: t, mode })); else setTrackPlay({ track: t, mode }); }} />
+        onTrack={(t, mode) => { if (!micReady) void startMic().then((ok) => ok && setTrackPlay({ track: t, mode })); else setTrackPlay({ track: t, mode }); }}
+        onPractice={(s) => { if (!micReady) void startMic().then((ok) => ok && setPractice(s)); else setPractice(s); }} />
     );
   else if (tab === "review")
     body = (
@@ -464,7 +473,7 @@ export default function App() {
   else
     body = <You progress={progress} cal={cal} priorities={priorities} onAssess={() => void beginGuided()} onSettings={() => setSettingsOpen(true)} onAdopt={(p) => setProgress(p)} />;
 
-  const focused = focus || studio !== "off" || !!trackPlay;
+  const focused = focus || studio !== "off" || !!trackPlay || !!practice;
   const stars = Object.values(progress.best).reduce((s, b) => s + b.stars, 0);
   if (reviewOpen && review) {
     return (

@@ -199,8 +199,8 @@ export const songSpan = (song: Song) => {
  * Lay the song out in time at a given tonic. The count-in is at least one bar and at least two
  * seconds so the starting pitch can sound before the first note.
  */
-export function prepareSong(song: Song, tonic: number): PreparedSong {
-  const beat = 60 / song.bpm;
+export function prepareSong(song: Song, tonic: number, rate = 1): PreparedSong {
+  const beat = 60 / (song.bpm * rate);
   const bar = beat * song.beatsPerBar;
   const leadIn = bar * Math.max(1, Math.ceil(2 / bar));
   const notes: PreparedNote[] = [];
@@ -217,6 +217,16 @@ export function prepareSong(song: Song, tonic: number): PreparedSong {
   const { lo, hi } = songSpan(song);
   const last = notes[notes.length - 1];
   return { song, tonic, notes, phraseEnds: findPhraseEnds(notes, beat), leadIn, end: last.start + last.dur, beat, lo: tonic + lo, hi: tonic + hi };
+}
+
+/** One line of a prepared song (notes from..to), on its own with a one-bar count-in, for practising. */
+export function prepareLine(p: PreparedSong, from: number, to: number): PreparedSong {
+  const lead = p.beat * Math.max(p.song.beatsPerBar, Math.ceil(2 / p.beat));
+  const shift = p.notes[from].start - lead;
+  const notes = p.notes.slice(from, to + 1).map((n, i) => ({ ...n, i, start: n.start - shift }));
+  const last = notes[notes.length - 1];
+  const midis = notes.map((n) => n.midi);
+  return { song: p.song, tonic: p.tonic, notes, phraseEnds: [notes.length - 1], leadIn: lead, end: last.start + last.dur, beat: p.beat, lo: Math.min(...midis), hi: Math.max(...midis) };
 }
 
 /**
