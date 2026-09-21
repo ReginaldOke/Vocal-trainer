@@ -173,7 +173,11 @@ export default function App() {
 
       // Only singing gets past here; the room's noise is treated as silence.
       voice.current.floorDb = s.noiseDb;
-      const heard = s.step === "mic" ? raw : voice.current.apply(raw);
+      const frames = s.step === "mic" ? [raw] : voice.current.apply(raw);
+      for (const heard of frames) handleStudio(heard);
+    });
+    const handleStudio = (heard: Frame) => {
+      const s = S.current;
       let f: Frame = heard.t < s.maskUntil ? { ...heard, voiced: false, midi: NaN } : heard;
       const run = s.running && s.run && !s.run.finished ? s.run : null;
       const target = run ? run.target : null;
@@ -181,7 +185,7 @@ export default function App() {
       const bk = backing.current;
       if (bk && s.running) {
         const gate = Math.max(-62, Math.min(-30, s.noiseDb + 10));
-        if (bk.audible() && f.voiced && f.db < gate + 5 && bk.tones().some((m) => Math.abs(foldedCents(f.midi, m)) < 25)) { f = { ...raw, voiced: false, midi: NaN }; bk.bleed(); }
+        if (bk.audible() && f.voiced && f.db < gate + 5 && bk.tones().some((m) => Math.abs(foldedCents(f.midi, m)) < 25)) { f = { ...heard, voiced: false, midi: NaN }; bk.bleed(); }
         bk.tick(f.voiced);
       }
       const live = tracker.push(f);
@@ -250,7 +254,7 @@ export default function App() {
         });
         if (f.t - s.tipAt > 6) setTip(null);
       }
-    });
+    };
   }, [engine, tracker, coach, finishTake]);
 
   const startMic = useCallback(async () => {

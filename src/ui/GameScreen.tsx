@@ -194,15 +194,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
   }, [engine, synth, onProgress]);
 
   useEffect(() => {
-    return engine.onFrame((heard) => {
+    const handle = (raw: Frame) => {
       const g = G.current;
-      const now = heard.t;
+      const now = raw.t;
       const dt = g.lastT ? Math.min(0.1, now - g.lastT) : 0;
       g.lastT = now;
       const { gate, noise } = room.current;
-      // Only singing gets past here; the room's noise is treated as silence.
-      g.voice.floorDb = noise;
-      const raw = g.voice.apply(heard);
 
       const run = g.run;
       const a = avatar.current;
@@ -287,6 +284,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       run.events = [];
       if (now - g.lastUi > 0.1) { g.lastUi = now; if (now - g.tipAt > 6) setTip(null); }
       if (run.finished) void finish();
+    };
+    return engine.onFrame((heard) => {
+      // Only singing gets past here; the room's noise is treated as silence.
+      const g = G.current;
+      g.voice.floorDb = room.current.noise;
+      for (const f of g.voice.apply(heard)) handle(f);
     });
   }, [engine, tracker, coach, finish, avatar, room, cueGlide, calibrated, onProgress]);
 
@@ -365,9 +368,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       view.current.run = null;
       // A hum or a trill is quiet: let more of it through than the room gate normally would.
       engine.setGate(Math.max(-70, room.current.gate - 6));
-      // Sirens start right at the bottom line, so the proof-of-voice delay is kept short here.
       g.voice.marginDb = 7;
-      g.voice.onsetSeconds = 0.1;
       g.glide = new GlideRun(step.glide, engine.now());
       view.current.glide = g.glide;
       if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __glide: g.glide, __run: null });
@@ -377,9 +378,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     } else {
       g.glide = null;
       view.current.glide = null;
+      // A quiet "ng" is meant to be soft: let more of it count than a full song would.
+      engine.setGate(step.quiet ? Math.max(-70, room.current.gate - 6) : room.current.gate);
+      g.voice.marginDb = step.quiet ? 7 : 12;
       play(step.song);
     }
-  }, [lesson, engine, play, onProgress, cueGlide]);
+  }, [lesson, engine, play, onProgress, cueGlide, room]);
 
   useEffect(() => {
     if (!lesson) return;
@@ -403,7 +407,6 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     view.current.glide = null;
     engine.setGate(room.current.gate);
     g.voice.marginDb = 12;
-    g.voice.onsetSeconds = 0.2;
     if (g.inLesson) { g.inLesson = false; setPhase("select"); onLessonDone(); return; }
     g.backing?.setTarget(null);
     g.buddy?.stop();
