@@ -16,9 +16,11 @@ import { SingerAvatar, type AvatarState } from "./SingerAvatar";
 import { SettingsSheet } from "./SettingsSheet";
 import { SONG_ART } from "./songArt";
 import { offWords } from "../coach/words";
+import { CoachDrawer } from "./CoachDrawer";
+import { MicMeter } from "./MicMeter";
 import { Settings as SettingsIcon, FileMusic, X, Star } from "lucide-react";
 import { GlideRun } from "../game/glide";
-import { backingFade, type LessonPlan, type LessonStep } from "../game/lesson";
+import { adjustSirenSpan, backingFade, type LessonPlan, type LessonStep } from "../game/lesson";
 
 export interface ReviewTarget {
   midi: number;
@@ -117,6 +119,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     glide: null as GlideRun | null,
     lastCue: -10,
     earKey: -2,
+    heardAt: 0,
     lessonStart: 0,
     inLesson: false,
     fade: 1,
@@ -204,14 +207,28 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         // A long silence probably means they have lost the notes: give them again.
         if (gl.quietFor > 5 && now - g.lastCue > 6) cueGlide(gl.cfg.from, gl.cfg.to);
         if (gl.finished) {
+          engine.setGate(room.current.gate);
           const sm = gl.summary();
-          setStepResult({ title: lessonStepTitle(), line: `${Math.round(sm.smoothness * 100)}% smooth, ${Math.round(sm.coverage * 100)}% of the range`, stars: sm.smoothness > 0.85 ? 3 : sm.smoothness > 0.6 ? 2 : 1 });
+          let extra = "";
+          if (gl.cfg.direction === "up") {
+            const change = adjustSirenSpan(g.progress, sm.smoothness, sm.coverage, calibrated);
+            saveProgress(g.progress);
+            onProgress({ ...g.progress });
+            if (change > 0) extra = ` Range widened to ${g.progress.sirenSpan} notes for next time.`;
+            else if (change < 0) extra = ` Range narrowed to ${g.progress.sirenSpan} notes for next time.`;
+          }
+          setStepResult({ title: lessonStepTitle(), line: `${Math.round(sm.smoothness * 100)}% smooth, ${Math.round(sm.coverage * 100)}% of the range.${extra}`, stars: sm.smoothness > 0.85 ? 3 : sm.smoothness > 0.6 ? 2 : 1 });
           setPhase("between");
         }
         return;
       }
       if (g.buddy?.running) g.buddy.update(raw.voiced, raw.voiced ? midiToHz(raw.midi) : 0, Math.max(0, Math.min(1, (raw.db - noise) / (-8 - noise))), Math.max(0, Math.min(1, (12 - raw.h1h2) / 14)));
       if (!run || run.finished) { a.strain = 0; return; }
+      if (raw.voiced) g.heardAt = now;
+      else if (g.heardAt > 0 && now - g.heardAt > 8 && now - g.tipAt > 8) {
+        g.tipAt = now;
+        setTip({ id: "not-heard", tone: "warn", t: now, text: "Nothing is coming through. Hold the phone a little closer and sing out; watch the level bar move." });
+      }
 
       let f: Frame = raw;
       const backing = g.backing;
@@ -261,7 +278,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       if (now - g.lastUi > 0.1) { g.lastUi = now; if (now - g.tipAt > 6) setTip(null); }
       if (run.finished) void finish();
     });
-  }, [engine, tracker, coach, finish, avatar, room, cueGlide]);
+  }, [engine, tracker, coach, finish, avatar, room, cueGlide, calibrated, onProgress]);
 
   useEffect(() => {
     if (!toast) return;
@@ -305,6 +322,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __backing: g.backing, __run: run, __recStart: now });
     g.recStart = engine.startRecording() ?? now;
     g.earKey = -2;
+    g.heardAt = engine.now();
     setSong(s);
     setSummary(null);
     setOutcome(null);
@@ -331,6 +349,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     if (step.kind === "glide") {
       g.run = null;
       view.current.run = null;
+      // A hum or a trill is quiet: let more of it through than the room gate normally would.
+      engine.setGate(Math.max(-70, room.current.gate - 6));
       g.glide = new GlideRun(step.glide, engine.now());
       view.current.glide = g.glide;
       g.backing?.setTarget(null);
@@ -363,6 +383,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     view.current.run = null;
     g.glide = null;
     view.current.glide = null;
+    engine.setGate(room.current.gate);
     if (g.inLesson) { g.inLesson = false; setPhase("select"); onLessonDone(); return; }
     g.backing?.setTarget(null);
     g.buddy?.stop();
@@ -382,16 +403,17 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         <div className="play-bar">
           <strong>{step.title}</strong>
           {lessonBar}
-          <button className="small" onClick={() => { G.current.glide = null; view.current.glide = null; startStep(stepIndex + 1); }}>Skip</button>
+          <MicMeter state={avatar} />
+          <button className="small" onClick={() => { G.current.glide = null; view.current.glide = null; engine.setGate(room.current.gate); startStep(stepIndex + 1); }}>Skip</button>
         </div>
         <div className="stage-wrap">
           <GameCanvas view={view} />
-          <div className="tip-toast" data-tone="info"><span className="tip-mark" />{step.instruction}</div>
           <aside className="buddy-panel">
             <SingerAvatar state={avatar} />
             <div className="buddy-plate">Pip</div>
           </aside>
         </div>
+        <CoachDrawer tip={null} fallback={step.instruction} tone="info" />
       </main>
     );
   }
@@ -435,17 +457,17 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <strong>{song.title}</strong>
           {lessonBar ?? <span>{difficultyById(settings.difficulty).label}</span>}
           {G.current.fade < 1 && <span className="pill teal">{G.current.fade === 0 ? "From memory" : `Backing ${Math.round(G.current.fade * 100)}%`}</span>}
+          <MicMeter state={avatar} />
           <button className="small" onClick={quit}>Quit</button>
         </div>
         <div className="stage-wrap">
           <GameCanvas view={view} />
-          {tip ? <div className="tip-toast" data-tone={tip.tone} role="status"><span className="tip-mark" />{tip.text}</div>
-            : step && step.kind === "song" && <div className="tip-toast" data-tone="info"><span className="tip-mark" />{step.instruction}</div>}
           <aside className="buddy-panel">
             <SingerAvatar state={avatar} />
             <div className="buddy-plate">Pip</div>
           </aside>
         </div>
+        <CoachDrawer tip={tip} fallback={step && step.kind === "song" ? step.instruction : settings.mode === "flow" ? "The song follows your voice. Sing it your way." : "Listening…"} tone="info" />
         {toast && <div className="toast" role="status">{toast}</div>}
       </main>
     );

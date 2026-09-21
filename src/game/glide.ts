@@ -56,6 +56,9 @@ export class GlideRun {
     this.trace.push({ t: now, midi: f.voiced ? f.midi : NaN, voiced: f.voiced, db: f.db });
     if (this.trace.length > 600) this.trace.splice(0, 200);
     if (this.finished) return;
+    // Nobody should be stuck on a warm-up: after a while, what they have done is enough.
+    const elapsed = now - this.startAt;
+    if ((elapsed > 45 && this.done >= 1) || elapsed > 70) { this.finished = true; return; }
     const span = Math.abs(this.far - this.near);
     if (f.voiced) {
       this.quietFor = 0;
@@ -69,8 +72,8 @@ export class GlideRun {
       this.lo = Math.min(this.lo, f.midi);
       this.hi = Math.max(this.hi, f.midi);
       const progress = (f.midi - this.near) / (this.far - this.near);
-      if (progress >= 0.8) this.reachedFar = true;
-      if (this.reachedFar && progress <= 0.2 && this.sungThisRep > 0.6) {
+      if (progress >= 0.7) this.reachedFar = true;
+      if (this.reachedFar && progress <= 0.3 && this.sungThisRep > 0.5) {
         // Out and back: one siren done.
         this.done++;
         this.reachedFar = false;

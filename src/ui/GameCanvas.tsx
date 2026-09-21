@@ -495,14 +495,15 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
             g.shadowBlur = 0;
           }
           if (run.silent > 2.5 || (n.sung === 0 && run.notes.every((m) => !m.judged))) {
-            g.textAlign = "center";
+            const promptX = narrow ? hitX + 14 : W * 0.6;
+            g.textAlign = narrow ? "left" : "center";
             g.textBaseline = "middle";
             g.fillStyle = "rgba(255,255,255,0.9)";
-            g.font = `800 ${narrow ? 18 : 24}px "Inter", sans-serif`;
-            g.fillText(n.lyric && n.lyric.trim() ? `Sing “${n.lyric.replace(/-$/, "")}” on ${noteName(n.midi)}` : `Sing ${noteName(n.midi)}`, W * 0.6, top + 26);
+            g.font = `800 ${narrow ? 16 : 24}px "Inter", sans-serif`;
+            g.fillText(n.lyric && n.lyric.trim() ? `Sing “${n.lyric.replace(/-$/, "")}” on ${noteName(n.midi)}` : `Sing ${noteName(n.midi)}`, promptX, top + 26);
             g.font = `500 ${narrow ? 12 : 14}px "Inter", sans-serif`;
             g.fillStyle = "rgba(220,228,255,0.7)";
-            g.fillText("The song follows your voice. Sing it your way.", W * 0.6, top + (narrow ? 46 : 52));
+            g.fillText(narrow ? "Sing it your way." : "The song follows your voice. Sing it your way.", promptX, top + (narrow ? 46 : 52));
             g.textAlign = "left";
             g.textBaseline = "alphabetic";
           }
@@ -589,13 +590,15 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
           g.strokeStyle = "#37d6b2";
           g.beginPath(); g.arc(hitX, py, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * glide.progress(last.midi)); g.stroke();
         }
-        g.textAlign = "center"; g.textBaseline = "middle";
+        // Prompts sit beside the hit line on phones, where Pip's corner panel cannot cover them.
+        const promptX = narrow ? hitX + 14 : W * 0.6;
+        g.textAlign = narrow ? "left" : "center"; g.textBaseline = "middle";
         g.fillStyle = "rgba(244,241,236,0.9)";
         g.font = `600 ${narrow ? 16 : 22}px "Inter", sans-serif`;
-        g.fillText(glide.finished ? "Done" : `Siren ${Math.min(glide.done + 1, c.repeats)} of ${c.repeats}`, W * 0.6, top + 26);
+        g.fillText(glide.finished ? "Done" : `Siren ${Math.min(glide.done + 1, c.repeats)} of ${c.repeats}`, promptX, top + 26);
         g.font = `500 ${narrow ? 12 : 14}px "Inter", sans-serif`;
         g.fillStyle = "rgba(244,241,236,0.6)";
-        g.fillText(c.direction === "up" ? "Slide up to the top line and back down" : "Sigh down to the bottom line", W * 0.6, top + (narrow ? 46 : 52));
+        g.fillText(c.direction === "up" ? "Slide up to the top line and back" : "Sigh down to the bottom line", promptX, top + (narrow ? 46 : 52));
         g.textAlign = "left"; g.textBaseline = "alphabetic";
       } else {
         // Free singing: the comet streams away from the hit line with no targets to judge against.

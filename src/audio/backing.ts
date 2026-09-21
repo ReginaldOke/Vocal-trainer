@@ -20,6 +20,12 @@ export class Backing {
   private lastPulse = -10;
   /** 0..1 scaffolding: 1 is full support, 0 is silence (sing it from memory) */
   fade = 1;
+  /**
+   * Phones cancel echo whatever the page asks, and that cancellation eats a voice singing the
+   * same note the speaker is playing. So on touch devices the piano cues a note once and then
+   * stays quiet while the singer answers, instead of pulsing under them.
+   */
+  pulse = typeof window === "undefined" ? true : !window.matchMedia("(pointer: coarse)").matches;
   style: BackingStyle = "piano";
   mode: GuideMode = "quiet";
   tonic = 60;
@@ -106,7 +112,7 @@ export class Backing {
       this.piano.setLevel(this.style === "piano" ? this.pianoLevel() : 0, 0.06);
     }
     const now = this.ctx.currentTime;
-    if (this.style === "piano" && this.target !== null && !singing && now - this.lastPulse > 2.2) this.strike(0.45);
+    if (this.pulse && this.style === "piano" && this.target !== null && !singing && now - this.lastPulse > 2.2) this.strike(0.45);
   }
 
   /** Pitches currently sounding from the speakers, so a faint match can be told from singing. */
@@ -116,10 +122,10 @@ export class Backing {
     return this.chord ? voiceChord(this.chord, this.target, this.tonic) : [this.target];
   }
 
-  /** True while speaker output could be reaching the microphone. */
+  /** True while speaker output could be mistaken for singing: the sustained tone, or the attack of a piano strike. */
   audible() {
     if (this.mode !== "quiet") return false;
-    return this.style === "tone" ? this.target !== null : this.piano.audible();
+    return this.style === "tone" ? this.target !== null : this.ctx.currentTime - this.piano.lastStrikeAt < 0.35;
   }
 
   /** The mic picked the backing up: get quieter. */

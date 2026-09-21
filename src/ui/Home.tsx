@@ -8,6 +8,8 @@ import { SONGS, type Song } from "../game/songs";
 import { GameCanvas, type GameView } from "./GameCanvas";
 import { SingerAvatar, type AvatarState } from "./SingerAvatar";
 import { GraduationCap, Play, Circle, Square, SlidersHorizontal } from "lucide-react";
+import { CoachDrawer } from "./CoachDrawer";
+import { MicMeter } from "./MicMeter";
 
 interface Props {
   engine: AudioEngine;
@@ -80,8 +82,8 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
         <div className="readout-strip" aria-live="off">
           <span className="note-name" data-state={note.state}>{note.name}</span>
           {note.state !== "idle" && <span className="cents">{note.cents > 0 ? "+" : ""}{Math.round(note.cents)}¢{note.vowel ? ` · “${note.vowel}”` : ""}</span>}
+          {micReady && <MicMeter state={avatar} />}
         </div>
-        {tip && micReady && <div className="tip-toast" data-tone={tip.tone} role="status"><span className="tip-mark" />{tip.text}</div>}
         <aside className="buddy-panel">
           <SingerAvatar state={avatar} />
           <div className="buddy-plate">Pip</div>
@@ -97,6 +99,8 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
           </div>
         )}
       </div>
+
+      {micReady && <CoachDrawer tip={tip} fallback="Sing anything. Pip and the line follow your voice." />}
 
       <div className="home-dock">
         <div className="next-card">

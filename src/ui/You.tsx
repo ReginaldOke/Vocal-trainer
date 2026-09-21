@@ -4,6 +4,9 @@ import type { Priority } from "../coach/report";
 import { ACHIEVEMENTS, levelFromXp, type Progress } from "../game/progress";
 import { RangeCompare } from "./RangeCompare";
 import { accuracyByDay, weeklyPlan } from "../game/plan";
+import { useEffect, useState } from "react";
+import { getCode, getSyncState, onSyncState, syncEnabled, useCode, type SyncState } from "../game/sync";
+import { Copy, Check, RefreshCw } from "lucide-react";
 import { Star, Mic, Award, Target, Flame, Zap, Gem, Sparkles, Ear, CalendarDays, Dumbbell, Settings, type LucideIcon } from "lucide-react";
 
 interface Props {
@@ -12,13 +15,59 @@ interface Props {
   priorities: Priority[] | null;
   onAssess: () => void;
   onSettings: () => void;
+  /** progress loaded from another device's code */
+  onAdopt: (p: Progress) => void;
 }
 
 const BADGE_ART: Record<string, LucideIcon> = {
   "first-song": Mic, "first-perfect": Target, "combo-10": Flame, "combo-25": Zap, "full-combo": Gem, fever: Sparkles, "five-stars": Star, "hard-clear": Ear, "ten-plays": CalendarDays, "all-drills": Dumbbell,
 };
 
-export function You({ progress, cal, priorities, onAssess, onSettings }: Props) {
+function SyncCard({ onAdopt }: { onAdopt: (p: Progress) => void }) {
+  const [state, setState] = useState<SyncState>(getSyncState());
+  const [entered, setEntered] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => onSyncState(setState), []);
+  const code = getCode();
+  const enabled = syncEnabled();
+  const copy = async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
+  const load = async () => {
+    setBusy(true); setNote(null);
+    try {
+      const p = await useCode(entered);
+      if (p) { onAdopt(p); setNote("Loaded. This device now saves to that code."); setEntered(""); }
+      else setNote("Nothing saved under that code yet.");
+    } catch { setNote("Could not reach the server."); }
+    setBusy(false);
+  };
+  const when = state.at ? new Date(state.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  return (
+    <section className="card sync">
+      <div className="page-head" style={{ marginBottom: "0.5rem" }}>
+        <h2>Your sync code</h2>
+        <span className={`pill ${state.status === "saved" ? "teal" : state.status === "error" ? "peach" : ""}`}>
+          {!enabled ? "Saving on this device only" : state.status === "saving" ? "Saving…" : state.status === "saved" ? `Saved ${when}` : state.status === "error" ? "Not saved" : "Ready"}
+        </span>
+      </div>
+      <div className="sync-code">
+        <code>{code}</code>
+        <button className="small" onClick={() => void copy()}>{copied ? <Check size={16} /> : <Copy size={16} />} {copied ? "Copied" : "Copy"}</button>
+      </div>
+      <p className="fine">{enabled ? "Type this code on another phone or computer to pick up where you left off. No account needed; keep the code private." : "Sync is not set up for this build yet. Your progress stays in this browser."}</p>
+      {enabled && (
+        <div className="sync-enter">
+          <input value={entered} onChange={(e) => setEntered(e.target.value.toUpperCase())} placeholder="Code from another device" aria-label="Sync code from another device" />
+          <button className="small" disabled={busy || entered.replace(/[^A-Z0-9]/g, "").length < 8} onClick={() => void load()}><RefreshCw size={16} /> Load</button>
+        </div>
+      )}
+      {note && <p className="fine">{note}</p>}
+    </section>
+  );
+}
+
+export function You({ progress, cal, priorities, onAssess, onSettings, onAdopt }: Props) {
   const lvl = levelFromXp(progress.xp);
   const stars = Object.values(progress.best).reduce((s, b) => s + b.stars, 0);
   const unlocked = Object.keys(progress.achievements).length;
@@ -106,6 +155,8 @@ export function You({ progress, cal, priorities, onAssess, onSettings }: Props) 
         </svg>
         <div className="range-legend"><span>4 weeks ago</span><span>on the note</span><span>today</span></div>
       </section>
+
+      <SyncCard onAdopt={onAdopt} />
 
       <section className="badges-list">
         <h2 style={{ fontSize: "1.2rem", marginBottom: "0.6rem" }}>Badges</h2>

@@ -54,7 +54,7 @@ export class FrameAnalyser {
 
     const p = this.pitch.detect(buf);
     frame.clarity = p.clarity;
-    if (p.freq <= 0 || p.clarity < 0.8) {
+    if (p.freq <= 0 || p.clarity < 0.75) {
       this.last.length = 0;
       return frame;
     }

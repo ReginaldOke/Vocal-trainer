@@ -77,7 +77,21 @@ The microphone is opened with echo cancellation, noise suppression and automatic
 
 Guide tones played through speakers would be picked up by the microphone, so pitch tracking is paused while the starting note sounds. With the headphones option ticked the whole line plays along.
 
+## Saving progress between devices (no login)
+
+Progress lives in the browser. To carry it between devices the app uses a **sync code**: a random code made on first run, shown on the You tab. Progress is saved under that code, and typing the code on another device loads it. No account, no email. The code is the only credential, so it should be treated like a password for a practice diary.
+
+The backend is a free Supabase project with one table and two SQL functions, called with plain `fetch`. Setting it up takes about five minutes:
+
+1. Create a free project at supabase.com.
+2. Open the SQL editor and run `supabase/setup.sql`. It makes the table and two functions (`get_progress`, `put_progress`) and locks the table itself, so the public key can only read or write one record it knows the code for and can never list them.
+3. Copy the project URL and the anon public key from Settings, API, and either paste them into `src/sync.config.ts` and commit, or add them as repository variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Settings, Secrets and variables, Actions, Variables) so the Pages build picks them up.
+
+Until then the You tab says "Saving on this device only" and everything still works. Sirens also adapt: they start a fifth wide and widen by a note after each smooth, complete siren, narrowing again if you fall short.
+
 ## On a phone
+
+Phones cancel echo whatever the page asks, and that cancellation removes a voice singing the same note the speaker is playing. So on touch devices the piano cues each note once and then stays quiet while you sing, rather than pulsing under you; a small level bar in the top bar shows whether the app is hearing you, and the coach speaks through a drawer under the stage that never covers the notes. Sirens start a fourth wide, sit below the switch in your voice, and widen by a note after each smooth, complete siren.
 
 The layout is phone-first below 720px: a bottom tab bar, the stage filling the screen with Pip tucked into a corner, two-column song tiles, and every control at least 44px tall. Safe-area insets and the dynamic viewport height are respected, double-tap zoom is off, and the screen stays awake while the mic is open (where the Wake Lock API exists). The highway and Pip render at a lower pixel ratio with fewer glows on small screens to keep 60 fps. Add it to the home screen and it runs full-screen as a web app.
 

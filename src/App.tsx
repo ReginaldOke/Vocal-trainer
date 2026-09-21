@@ -13,7 +13,8 @@ import { GameCanvas, type GameView } from "./ui/GameCanvas";
 import { RangeCompare } from "./ui/RangeCompare";
 import { guessVoiceType } from "./coach/voiceType";
 import { buildPriorities, type Priority } from "./coach/report";
-import { loadProgress, saveProgress, type Progress, type Settings } from "./game/progress";
+import { loadProgress, saveProgress, setSaveHook, type Progress, type Settings } from "./game/progress";
+import { pushProgress, reconcile } from "./game/sync";
 import { PitchCanvas, type CanvasView, type TracePoint } from "./ui/PitchCanvas";
 import { Meters, NoteReadout, RangeBar, TipCard, type Readout } from "./ui/Panels";
 import { GameScreen, type ReviewTarget } from "./ui/GameScreen";
@@ -56,7 +57,7 @@ export default function App() {
   const backing = useRef<Backing | null>(null);
   const avatar = useRef<AvatarState>({ ...EMPTY_AVATAR });
   /** background noise measured once the mic opens; shared by every screen */
-  const room = useRef({ gate: -55, noise: -60, ready: false, start: -1, samples: [] as number[] });
+  const room = useRef({ gate: -55, noise: -60, ready: false, start: -1, samples: [] as number[], quiet: [] as number[], lastGate: 0 });
 
   // Everything the per-frame handler touches lives in refs so it never waits for a React render.
   const S = useRef({
@@ -91,6 +92,13 @@ export default function App() {
   const [micReady, setMicReady] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
+
+  // Every save goes to the sync backend too, and a newer record from another device wins on load.
+  useEffect(() => {
+    setSaveHook(pushProgress);
+    void reconcile(loadProgress()).then((remote) => { if (remote) setProgress(remote); });
+    return () => setSaveHook(null);
+  }, []);
   const [autoplay, setAutoplay] = useState<Song | null>(null);
   const [lesson, setLesson] = useState<LessonPlan | null>(null);
   const [review, setReview] = useState<{ blob: Blob; targets: ReviewTarget[] | null; title: string } | null>(null);
@@ -136,10 +144,22 @@ export default function App() {
         if (raw.t - r.start < 1.5) r.samples.push(raw.db);
         else {
           const sorted = [...r.samples].sort((a, b) => a - b);
-          r.noise = sorted[Math.floor(sorted.length * 0.9)] ?? -60;
-          r.gate = Math.max(-62, Math.min(-35, r.noise + 8));
+          r.noise = sorted[Math.floor(sorted.length * 0.6)] ?? -60;
+          r.gate = Math.max(-62, Math.min(-45, r.noise + 8));
           engine.setGate(r.gate);
           r.ready = true;
+          r.lastGate = raw.t;
+        }
+      } else {
+        // Keep listening to the room: the floor is re-estimated from the quietest recent moments,
+        // so a noisy first second (or a phone warming up) does not leave the gate stuck high.
+        if (!raw.voiced) { r.quiet.push(raw.db); if (r.quiet.length > 400) r.quiet.shift(); }
+        if (raw.t - r.lastGate > 4 && r.quiet.length >= 60 && S.current.owner !== "studio") {
+          const sorted = [...r.quiet].sort((a, b) => a - b);
+          r.noise = sorted[Math.floor(sorted.length * 0.2)];
+          r.gate = Math.max(-62, Math.min(-45, r.noise + 8));
+          engine.setGate(r.gate);
+          r.lastGate = raw.t;
         }
       }
       const s = S.current;
@@ -420,7 +440,7 @@ export default function App() {
       </main>
     );
   else
-    body = <You progress={progress} cal={cal} priorities={priorities} onAssess={() => void beginGuided()} onSettings={() => setSettingsOpen(true)} />;
+    body = <You progress={progress} cal={cal} priorities={priorities} onAssess={() => void beginGuided()} onSettings={() => setSettingsOpen(true)} onAdopt={(p) => setProgress(p)} />;
 
   const focused = focus || studio !== "off" || (tab === "review" && reviewOpen && !!review);
   const stars = Object.values(progress.best).reduce((s, b) => s + b.stars, 0);

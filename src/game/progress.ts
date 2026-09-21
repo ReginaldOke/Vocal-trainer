@@ -49,6 +49,10 @@ export interface Progress {
   cleanReps: Record<string, number>;
   /** lessons finished, with their dates */
   lessons: number[];
+  /** how wide the sirens are, in notes; starts narrow and grows with clean sirens */
+  sirenSpan: number;
+  /** when this record last changed, for syncing between devices */
+  updatedAt: number;
   /** keyed by `${songId}:${difficulty}` */
   best: Record<string, Best>;
   /** achievement id -> unlock time */
@@ -83,6 +87,8 @@ const DEFAULT: Progress = {
   history: [],
   cleanReps: {},
   lessons: [],
+  sirenSpan: 5,
+  updatedAt: 0,
   best: {},
   achievements: {},
   settings: { difficulty: "medium", mode: "flow", voice: "mid", transpose: 0, guide: "quiet", backing: "piano", metronome: true, buddyVoice: false },
@@ -99,8 +105,19 @@ export function loadProgress(): Progress {
   }
 }
 
+/** Something to call after every save, such as pushing to the sync backend. */
+let onSaved: ((p: Progress) => void) | null = null;
+export function setSaveHook(fn: ((p: Progress) => void) | null) { onSaved = fn; }
+
 export function saveProgress(p: Progress) {
+  p.updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode or storage full */ }
+  onSaved?.(p);
+}
+
+/** Replace what is stored with a record from elsewhere (another device), without re-pushing it. */
+export function adoptProgress(p: Progress) {
+  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* ignore */ }
 }
 
 export const bestKey = (songId: string, difficulty: string) => `${songId}:${difficulty}`;
