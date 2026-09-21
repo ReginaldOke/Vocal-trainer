@@ -1,0 +1,9 @@
+{
+  "name": "Vocal Coach",
+  "short_name": "Vocal Coach",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#121317",
+  "theme_color": "#121317",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
