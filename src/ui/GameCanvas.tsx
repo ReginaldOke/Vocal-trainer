@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { isBlackKey, noteName } from "../audio/pitch";
-import { BIN, type GameRun, type Judgement, type RunEvent } from "../game/scoring";
+import { BIN, type GameRun, type Judgement, type RunEvent, type RunNote } from "../game/scoring";
 import type { GlideRun } from "../game/glide";
 
 export interface GameView {
@@ -12,6 +12,8 @@ export interface GameView {
   free: { t: number; midi: number; db: number; voiced: boolean }[];
   /** a siren exercise in progress */
   glide?: GlideRun | null;
+  /** called when the singer taps a note tube, so it can be sounded */
+  onNoteTap?: (note: RunNote) => void;
 }
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; }
@@ -43,6 +45,30 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
     let feverFlash = 0;
     let lo = 55, hi = 69;
     const hasRoundRect = typeof g.roundRect === "function";
+    // The last frame's layout, so a tap can be mapped back to a note.
+    const layout = { gutter: 0, hitX: 0, pps: 1, pos: 0, top: 0, bottom: 0, lo: 55, hi: 69, tubeH: 10 };
+    const flashes = new Map<number, number>();
+    const onTap = (e: PointerEvent) => {
+      const v = view.current;
+      const run = v.run;
+      if (!run || !v.onNoteTap) return;
+      const r = canvas.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const L = layout;
+      const t = L.pos + (px - L.hitX) / L.pps;
+      const midi = L.lo + ((L.bottom - py) / (L.bottom - L.top)) * (L.hi - L.lo);
+      let best: RunNote | null = null, bestD = Infinity;
+      for (const n of run.notes) {
+        if (t < n.start - 0.05 || t > n.start + n.dur + 0.05) continue;
+        const d = Math.abs(n.midi - midi);
+        if (d < bestD) { bestD = d; best = n; }
+      }
+      if (best && bestD <= Math.max(0.9, (L.tubeH / ((L.bottom - L.top) / (L.hi - L.lo))) * 0.9)) {
+        flashes.set(best.i, performance.now());
+        v.onNoteTap(best);
+      }
+    };
+    canvas.addEventListener("pointerdown", onTap);
 
     const burst = (x: number, y: number, n: number, color: string, speed = 260) => {
       for (let i = 0; i < n; i++) {
@@ -167,6 +193,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
 
       // Note tubes.
       const tubeH = Math.max(10, row * 0.72);
+      Object.assign(layout, { gutter, hitX, pps, pos, top, bottom, lo, hi, tubeH });
       if (run) {
         const t = run.mode === "tempo" ? run.takeTime(now) : pos;
         for (const n of run.notes) {
@@ -205,12 +232,14 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
           g.fillRect(bx, yy - tubeH / 2, bw, tubeH);
           g.restore();
 
-          // Outline and glow.
+          // Outline and glow; a tapped tube flashes white while its note sounds.
+          const flashAge = flashes.has(n.i) ? (tNow - flashes.get(n.i)!) / 700 : 1;
+          if (flashAge >= 1) flashes.delete(n.i);
           g.beginPath();
           if (hasRoundRect) g.roundRect(bx, yy - tubeH / 2, bw, tubeH, tubeH / 2); else g.rect(bx, yy - tubeH / 2, bw, tubeH);
-          g.lineWidth = active ? 2 : 1;
-          g.strokeStyle = active ? "rgba(200,215,255,0.95)" : "rgba(170,185,255,0.5)";
-          if (active) { g.shadowColor = fever ? "rgba(255,200,80,0.9)" : "rgba(130,160,255,0.9)"; g.shadowBlur = glow(16); }
+          g.lineWidth = active || flashAge < 1 ? 2 : 1;
+          g.strokeStyle = flashAge < 1 ? `rgba(255,255,255,${0.95 * (1 - flashAge)})` : active ? "rgba(200,215,255,0.95)" : "rgba(170,185,255,0.5)";
+          if (active || flashAge < 1) { g.shadowColor = flashAge < 1 ? "rgba(255,255,255,0.9)" : fever ? "rgba(255,200,80,0.9)" : "rgba(130,160,255,0.9)"; g.shadowBlur = glow(16); }
           g.stroke();
           g.shadowBlur = 0;
 
@@ -593,7 +622,7 @@ export function GameCanvas({ view }: { view: React.MutableRefObject<GameView> })
       }
     };
     draw();
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); canvas.removeEventListener("pointerdown", onTap); };
   }, [view]);
 
   return <canvas ref={ref} className="game-canvas" role="img" aria-label="The song highway: notes scroll toward the hit line and your voice lights them up" />;

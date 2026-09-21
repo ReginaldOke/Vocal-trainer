@@ -7,7 +7,7 @@ import type { Progress } from "../game/progress";
 import { SONGS, type Song } from "../game/songs";
 import { GameCanvas, type GameView } from "./GameCanvas";
 import { SingerAvatar, type AvatarState } from "./SingerAvatar";
-import { SONG_ART } from "./songArt";
+import { GraduationCap, Play, Circle, Square, SlidersHorizontal } from "lucide-react";
 
 interface Props {
   engine: AudioEngine;
@@ -100,7 +100,7 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
 
       <div className="home-dock">
         <div className="next-card">
-          <span className="art gold">🎓</span>
+          <span className="art gold"><GraduationCap size={26} /></span>
           <div>
             <span className="eyebrow">{progress.lessons.some((t) => Date.now() - t < 20 * 3600e3) ? "Another lesson" : "Today's lesson"}</span>
             <strong>Warm up, one drill, {song.title}</strong>
@@ -109,9 +109,9 @@ export function Home({ engine, tracker, coach, micReady, micError, onStartMic, p
           <button className="primary" onClick={onLesson}>Start</button>
         </div>
         <div className="quick">
-          <button onClick={() => onPlay(song)}><span>{SONG_ART[song.id]?.emoji ?? "🎵"}</span><span>{played ? "Next song" : "Just sing"}</span></button>
-          <button className={recording ? "rec on" : "rec"} onClick={() => void toggleRecord()} disabled={!micReady}><span>{recording ? "⏹" : "⏺"}</span><span>{recording ? "Stop" : "Record"}</span></button>
-          <button onClick={onAssess}><span>🎚️</span><span>My range</span></button>
+          <button onClick={() => onPlay(song)}><Play size={20} /><span>{played ? "Next song" : "Just sing"}</span></button>
+          <button className={recording ? "rec on" : "rec"} onClick={() => void toggleRecord()} disabled={!micReady}>{recording ? <Square size={20} fill="currentColor" /> : <Circle size={20} fill="currentColor" />}<span>{recording ? "Stop" : "Record"}</span></button>
+          <button onClick={onAssess}><SlidersHorizontal size={20} /><span>My range</span></button>
         </div>
       </div>
     </main>

@@ -16,6 +16,7 @@ import { SingerAvatar, type AvatarState } from "./SingerAvatar";
 import { SettingsSheet } from "./SettingsSheet";
 import { SONG_ART } from "./songArt";
 import { offWords } from "../coach/words";
+import { Settings as SettingsIcon, FileMusic, X, Star } from "lucide-react";
 import { GlideRun } from "../game/glide";
 import { backingFade, type LessonPlan, type LessonStep } from "../game/lesson";
 
@@ -120,7 +121,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     fade: 1,
   });
   G.current.progress = progress;
-  const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
+  const view = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [], onNoteTap: (n) => G.current.backing?.preview(n.midi) });
   const settings = progress.settings;
 
   useEffect(() => { onFocus(phase !== "select"); }, [phase, onFocus]);
@@ -472,7 +473,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
             {outcome.newBest && <span className="badge gold">New record</span>}
             {summary.fullCombo && summary.notes.length >= 8 && <span className="badge">Full combo</span>}
             {best && !outcome.newBest && <span className="badge dim">Best {best.score.toLocaleString()}</span>}
-            <span className="badge">+{outcome.xpGained} XP</span>
+            <span className="badge"><Star size={12} strokeWidth={2.5} /> +{outcome.xpGained} XP</span>
           </p>
         </header>
 
@@ -538,14 +539,14 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
             <button role="tab" aria-selected={tab === "drill"} onClick={() => setTab("drill")}>Drills</button>
             <button role="tab" aria-selected={tab === "ear"} onClick={() => setTab("ear")}>Ear</button>
           </div>
-          <button className="small" onClick={() => setSettingsOpen(true)}>Settings</button>
+          <button className="small" onClick={() => setSettingsOpen(true)}><SettingsIcon size={16} /> Settings</button>
         </div>
       </div>
 
       {tab === "song" && (
         <div className="import-row">
           <label className="button small">
-            Add a song from MIDI
+            <FileMusic size={16} /> Add a song from MIDI
             <input type="file" accept=".mid,.midi,.kar,audio/midi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importMidi(f); e.target.value = ""; }} />
           </label>
           <span className="fine">Any tune you have as a .mid file. It stays on this device.</span>
@@ -567,7 +568,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
                 <span className="meta"><span className="song-tier" aria-label={`tier ${s.tier}`}>{[1, 2, 3, 4, 5].map((k) => <i key={k} data-on={k <= s.tier} />)}</span>{noteName(tonic + span.lo)}–{noteName(tonic + span.hi)}</span>
                 <span className="song-best">{b ? <><Stars n={b.stars} /><em>{b.score.toLocaleString()}</em></> : <em>New</em>}</span>
               </button>
-              {s.custom && <button className="song-remove" aria-label={`Remove ${s.title}`} onClick={() => removeCustom(s.id)}>×</button>}
+              {s.custom && <button className="song-remove" aria-label={`Remove ${s.title}`} onClick={() => removeCustom(s.id)}><X size={14} /></button>}
             </div>
           );
         })}

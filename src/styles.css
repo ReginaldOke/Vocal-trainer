@@ -92,7 +92,7 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
 .tabs-nav button { border: 0; background: transparent; color: var(--ink-soft); padding: 0.55rem 0.95rem; font-weight: 600; }
 .tabs-nav button[aria-current="page"] { background: var(--surface-2); color: var(--ink); }
 .status-pills { display: flex; gap: 0.4rem; margin-left: auto; }
-.pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem; border-radius: 999px; background: var(--surface-2); font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+.pill { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.75rem; border-radius: 999px; background: var(--surface-2); font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
 .pill.gold { background: var(--tint-gold); color: var(--gold); }
 .pill.peach { background: var(--tint-peach); color: var(--primary); }
 .pill.teal { background: var(--tint-teal); color: var(--teal); }
@@ -107,7 +107,7 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
   .bottomnav { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--surface); padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom, 0)); }
   .bottomnav button { border: 0; background: transparent; border-radius: 14px; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.25rem; min-height: 3rem; font-size: 0.72rem; font-weight: 600; color: var(--ink-mute); }
   .bottomnav button[aria-current="page"] { color: var(--ink); background: var(--surface-2); }
-  .bottomnav button span:first-child { font-size: 1.25rem; line-height: 1; }
+  .bottomnav button svg { display: block; }
 }
 
 /* ---------- Home: the live stage ---------- */
@@ -134,7 +134,7 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
 .next-card .meta { color: var(--ink-soft); font-size: 0.85rem; }
 .quick { display: flex; gap: 0.5rem; align-items: stretch; }
 .quick button { flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.9rem; border-radius: 16px; font-size: 0.78rem; }
-.quick button span:first-child { font-size: 1.3rem; line-height: 1; }
+.quick button svg { display: block; }
 .tip-toast { position: absolute; left: 50%; bottom: 3.2rem; transform: translateX(-50%); max-width: min(90%, 34rem); display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.95rem; border-radius: 999px; background: rgba(27, 29, 36, 0.92); border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-size: 0.95rem; pointer-events: none; z-index: 1; }
 .tip-toast .tip-mark { flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--line-strong); }
 .tip-toast[data-tone="good"] .tip-mark { background: var(--teal); }
@@ -232,7 +232,7 @@ button:focus-visible, .button:focus-within, input:focus-visible { outline: 3px s
 .results-head h1 { font-size: clamp(3rem, 10vw, 5rem); font-variant-numeric: tabular-nums; }
 .eyebrow { color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; font-weight: 700; }
 .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
-.badge { padding: 0.3rem 0.75rem; border-radius: 999px; background: var(--surface-2); font-size: 0.85rem; font-weight: 700; }
+.badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.75rem; border-radius: 999px; background: var(--surface-2); font-size: 0.85rem; font-weight: 700; }
 .badge.gold { background: var(--gold); color: #2a2205; }
 .badge.dim { color: var(--ink-soft); }
 .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); gap: 0.5rem; }

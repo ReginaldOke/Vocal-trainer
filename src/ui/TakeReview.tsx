@@ -6,6 +6,7 @@ import { isBlackKey, noteName } from "../audio/pitch";
 import { foldedCents } from "../coach/rules";
 import type { ReviewTarget } from "./GameScreen";
 import { offWords } from "../coach/words";
+import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 interface Props {
   blob: Blob;
@@ -438,9 +439,9 @@ export function TakeReview({ blob, targets, title, onClose }: Props) {
         <>
           <div className="review-tools">
             <div className="zoom">
-              <button onClick={() => zoomBy(0.6)} aria-label="Zoom in">+</button>
-              <button onClick={() => zoomBy(1 / 0.6)} aria-label="Zoom out">−</button>
-              <button onClick={fitAll}>Fit</button>
+              <button onClick={() => zoomBy(0.6)} aria-label="Zoom in"><ZoomIn size={18} /></button>
+              <button onClick={() => zoomBy(1 / 0.6)} aria-label="Zoom out"><ZoomOut size={18} /></button>
+              <button onClick={fitAll}><Maximize2 size={16} /> Fit</button>
               <span className="fine">Scroll to zoom, drag to pan, click to seek. Pinch on touch.</span>
             </div>
             <div className="legend">

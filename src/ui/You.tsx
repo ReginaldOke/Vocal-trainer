@@ -4,6 +4,7 @@ import type { Priority } from "../coach/report";
 import { ACHIEVEMENTS, levelFromXp, type Progress } from "../game/progress";
 import { RangeCompare } from "./RangeCompare";
 import { accuracyByDay, weeklyPlan } from "../game/plan";
+import { Star, Mic, Award, Target, Flame, Zap, Gem, Sparkles, Ear, CalendarDays, Dumbbell, Settings, type LucideIcon } from "lucide-react";
 
 interface Props {
   progress: Progress;
@@ -13,8 +14,8 @@ interface Props {
   onSettings: () => void;
 }
 
-const BADGE_ART: Record<string, string> = {
-  "first-song": "🎤", "first-perfect": "🎯", "combo-10": "🔥", "combo-25": "⚡", "full-combo": "💎", fever: "✨", "five-stars": "🌟", "hard-clear": "👂", "ten-plays": "📅", "all-drills": "🧘",
+const BADGE_ART: Record<string, LucideIcon> = {
+  "first-song": Mic, "first-perfect": Target, "combo-10": Flame, "combo-25": Zap, "full-combo": Gem, fever: Sparkles, "five-stars": Star, "hard-clear": Ear, "ten-plays": CalendarDays, "all-drills": Dumbbell,
 };
 
 export function You({ progress, cal, priorities, onAssess, onSettings }: Props) {
@@ -33,7 +34,7 @@ export function You({ progress, cal, priorities, onAssess, onSettings }: Props) 
     <main className="page">
       <div className="page-head">
         <h1>You</h1>
-        <button className="small" onClick={onSettings}>Settings</button>
+        <button className="small" onClick={onSettings}><Settings size={16} /> Settings</button>
       </div>
 
       <section className="card you-hero">
@@ -44,9 +45,9 @@ export function You({ progress, cal, priorities, onAssess, onSettings }: Props) 
         <div>
           <p className="fine">{lvl.need - lvl.into} XP to level {lvl.level + 1}</p>
           <div className="you-stats">
-            <span className="pill gold">★ {stars}</span>
-            <span className="pill peach">🎤 {progress.plays} takes</span>
-            <span className="pill teal">🏅 {unlocked}/{ACHIEVEMENTS.length}</span>
+            <span className="pill gold"><Star size={14} strokeWidth={2.5} /> {stars}</span>
+            <span className="pill peach"><Mic size={14} strokeWidth={2.5} /> {progress.plays} takes</span>
+            <span className="pill teal"><Award size={14} strokeWidth={2.5} /> {unlocked}/{ACHIEVEMENTS.length}</span>
           </div>
         </div>
       </section>
@@ -111,7 +112,7 @@ export function You({ progress, cal, priorities, onAssess, onSettings }: Props) 
         <ul>
           {ACHIEVEMENTS.map((a) => (
             <li key={a.id} data-on={!!progress.achievements[a.id]}>
-              <span className="art">{BADGE_ART[a.id] ?? "🏅"}</span>
+              <span className="art">{(() => { const I = BADGE_ART[a.id] ?? Award; return <I size={18} />; })()}</span>
               <strong>{a.title}</strong>
               <span>{a.blurb}</span>
             </li>

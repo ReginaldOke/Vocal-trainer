@@ -23,16 +23,17 @@ import { buildLesson, type LessonPlan } from "./game/lesson";
 import { You } from "./ui/You";
 import { SettingsSheet } from "./ui/SettingsSheet";
 import { EMPTY_AVATAR, SingerAvatar, type AvatarState } from "./ui/SingerAvatar";
+import { Mic, ListMusic, Search, UserRound, Star, Sparkles, type LucideIcon } from "lucide-react";
 
 type Tab = "sing" | "songs" | "review" | "you";
 type StepId = "mic" | "range-low" | "range-high" | "hold" | "song" | "scale";
 type Phase = "ready" | "running" | "done";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "sing", label: "Sing", icon: "🎤" },
-  { id: "songs", label: "Songs", icon: "🎵" },
-  { id: "review", label: "Review", icon: "🔍" },
-  { id: "you", label: "You", icon: "🐤" },
+const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
+  { id: "sing", label: "Sing", icon: Mic },
+  { id: "songs", label: "Songs", icon: ListMusic },
+  { id: "review", label: "Review", icon: Search },
+  { id: "you", label: "You", icon: UserRound },
 ];
 
 const STEPS: { id: StepId; label: string }[] = [
@@ -83,7 +84,7 @@ export default function App() {
     pending: null as Tip | null,
   });
   const view = useRef<CanvasView>({ trace: [], now: () => engine.now(), exercise: null, takeStart: 0, range: null, floorDb: -60 });
-  const gameView = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [] });
+  const gameView = useRef<GameView>({ run: null, now: () => engine.now(), effects: [], free: [], onNoteTap: (n) => backing.current?.preview(n.midi) });
 
   const [tab, setTab] = useState<Tab>("sing");
   const [focus, setFocus] = useState(false);
@@ -432,15 +433,15 @@ export default function App() {
             {TABS.map((t) => <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => go(t.id)}>{t.label}</button>)}
           </nav>
           <div className="status-pills">
-            <span className="pill gold">★ {stars}</span>
-            <span className="pill peach">{progress.xp} XP</span>
+            <span className="pill gold"><Star size={14} strokeWidth={2.5} /> {stars}</span>
+            <span className="pill peach"><Sparkles size={14} strokeWidth={2.5} /> {progress.xp} XP</span>
           </div>
         </header>
       )}
       <div className="screen">{body}</div>
       {!focused && (
         <nav className="bottomnav" aria-label="Sections">
-          {TABS.map((t) => <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => go(t.id)}><span>{t.icon}</span><span>{t.label}</span></button>)}
+          {TABS.map((t) => <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => go(t.id)}><t.icon size={22} strokeWidth={tab === t.id ? 2.4 : 1.8} /><span>{t.label}</span></button>)}
         </nav>
       )}
       {settingsOpen && <SettingsSheet settings={progress.settings} calibrated={!!cal} onChange={setSetting} onClose={() => setSettingsOpen(false)} />}
