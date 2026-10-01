@@ -33,8 +33,10 @@ button.icon[aria-pressed="true"] { color: var(--bg); background: var(--ink); }
 .progress i { display: block; height: 100%; background: var(--accent); transition: width 300ms ease; }
 .progress[data-on="false"] { visibility: hidden; }
 
-.stage-wrap { position: relative; min-height: 0; padding: 0.5rem 0.6rem 0; display: grid; }
-.stage { width: 100%; height: 100%; display: block; border-radius: var(--radius); background: var(--stage); cursor: pointer; touch-action: none; }
+/* The picture is laid over its slot rather than placed in it, so its own drawing size can never
+   stretch the slot and push the buttons off the screen. */
+.stage-wrap { position: relative; min-height: 0; overflow: hidden; }
+.stage { position: absolute; left: 0.6rem; top: 0.5rem; width: calc(100% - 1.2rem); height: calc(100% - 0.5rem); display: block; border-radius: var(--radius); background: var(--stage); cursor: pointer; touch-action: none; }
 .review-canvas { cursor: grab; }
 .overlay { position: absolute; inset: 0.5rem 0.6rem 0; display: grid; place-content: center; gap: 0.9rem; justify-items: center; border-radius: var(--radius); background: rgba(16, 17, 20, 0.55); backdrop-filter: blur(4px); }
 
