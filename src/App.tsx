@@ -25,7 +25,7 @@ import { Player } from "./ui/Player";
 import type { Track } from "./game/tracks";
 import { TakeReview } from "./ui/TakeReview";
 import { Home, nextSong } from "./ui/Home";
-import { buildLesson, type LessonPlan } from "./game/lesson";
+import { buildLesson, type LessonPlan, buildPitchWorkout } from "./game/lesson";
 import { You } from "./ui/You";
 import { SettingsSheet } from "./ui/SettingsSheet";
 import { EMPTY_AVATAR, type AvatarState } from "./ui/SingerAvatar";
@@ -451,6 +451,7 @@ export default function App() {
         progress={progress} onProgress={setProgress} autoplay={autoplay} onAutoplayed={() => setAutoplay(null)} onFocus={setFocus}
         onReview={(blob, targets, title) => openReview(blob, targets, title)} lesson={lesson} onLessonDone={() => { setLesson(null); go("sing"); }}
         onTrack={(t, mode) => { if (!micReady) void startMic().then((ok) => ok && setTrackPlay({ track: t, mode })); else setTrackPlay({ track: t, mode }); }}
+        onWorkout={() => void startMic().then((ok) => { if (ok) setLesson(buildPitchWorkout(progress, cal ? { low: cal.low, high: cal.high, comfort: cal.comfort } : null)); })}
         onPractice={(s) => { if (!micReady) void startMic().then((ok) => ok && setPractice(s)); else setPractice(s); }} />
     );
   else if (tab === "review")

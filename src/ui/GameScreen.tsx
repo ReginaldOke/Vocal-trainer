@@ -58,6 +58,8 @@ interface Props {
   onTrack: (track: Track, mode: "lesson" | "sing") => void;
   /** learn a song the karaoke way: hear it, line by line, then through */
   onPractice?: (song: Song) => void;
+  /** start the guided pitch workout */
+  onWorkout?: () => void;
 }
 
 type Phase = "select" | "play" | "results" | "glide" | "between" | "lesson-done";
@@ -78,7 +80,7 @@ const Stars = ({ n, size = "" }: { n: number; size?: string }) => (
   <span className={`stars ${size}`} aria-label={`${n} of 5 stars`}>{[1, 2, 3, 4, 5].map((i) => <span key={i} data-on={i <= n}>★</span>)}</span>
 );
 
-export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone, onTrack, onPractice }: Props) {
+export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, room, progress, onProgress, autoplay, onAutoplayed, onFocus, onReview, lesson, onLessonDone, onTrack, onPractice, onWorkout }: Props) {
   const [tracks, setTracks] = useState<Track[]>(() => loadTracks());
   const [link, setLink] = useState("");
   const [linkNote, setLinkNote] = useState<{ text: string; search?: string; tone: "info" | "error" } | null>(null);
@@ -263,7 +265,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         gl.update(raw, now);
         a.q = raw.voiced ? 0.7 : 0;
         // A long silence probably means they have lost the notes: give them again.
-        if (gl.quietFor > 5 && now - g.lastCue > 6) cueGlide(gl.cfg.from, gl.cfg.to);
+        // The cue starts where the singer starts: the bottom for a rising siren, the top for a falling one.
+        if (gl.quietFor > 5 && now - g.lastCue > 6) cueGlide(gl.cfg.direction === "down" ? gl.cfg.to : gl.cfg.from, gl.cfg.direction === "down" ? gl.cfg.from : gl.cfg.to);
         if (gl.finished) {
           engine.setGate(room.current.gate);
           const sm = gl.summary();
@@ -370,7 +373,9 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
     const tonic = chooseTonic(s, st.voice, calibrated, st.transpose);
     const prepared = prepareSong(s, tonic);
     const now = engine.now();
-    const run = new GameRun(prepared, difficultyById(st.difficulty), st.mode, now);
+    // Some exercises only work one way: led from the piano, in time.
+    const mode = s.pace ?? st.mode;
+    const run = new GameRun(prepared, difficultyById(st.difficulty), mode, now);
     g.run = run;
     view.current.run = run;
     view.current.effects = [];
@@ -385,12 +390,12 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       g.fade = backingFade(g.progress, s.id);
       g.backing.setFade(g.fade);
       // With headphones in tempo mode the whole melody plays; piano chords still fit under it.
-      g.backing.setMode(st.mode === "tempo" && st.guide === "full" && st.backing === "tone" ? "off" : st.guide);
-      if (st.mode === "tempo" && synth) {
+      g.backing.setMode(mode === "tempo" && st.guide === "full" && st.backing === "tone" ? "off" : st.guide);
+      if (mode === "tempo" && synth) {
         const ctxStart = engine.ctx.currentTime;
         if (st.metronome) synth.clickTrack(ctxStart, prepared.beat, s.beatsPerBar, 0, prepared.end);
         if (st.guide === "full") synth.playSequence(prepared.notes.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), ctxStart);
-        else if (!s.ear) g.backing.playMelody(prepared.notes.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), ctxStart, 0.45);
+        else if (!s.ear) g.backing.playMelody(prepared.notes.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), ctxStart, s.melody ?? 0.45);
       }
     }
     applyBuddyVoice(st.buddyVoice);
@@ -435,7 +440,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
       view.current.glide = g.glide;
       if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __glide: g.glide, __run: null });
       g.backing?.setTarget(null);
-      cueGlide(step.glide.from, step.glide.to);
+      cueGlide(step.glide.direction === "down" ? step.glide.to : step.glide.from, step.glide.direction === "down" ? step.glide.from : step.glide.to);
       setPhase("glide");
     } else {
       g.glide = null;
@@ -542,8 +547,8 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
         <div className="play-bar">
           <strong>{song.title}</strong>
           {lessonBar ?? <span>{difficultyById(settings.difficulty).label}</span>}
-          {G.current.fade < 1 && settings.mode !== "echo" && <span className="pill teal">{G.current.fade === 0 ? "From memory" : `Backing ${Math.round(G.current.fade * 100)}%`}</span>}
-          {settings.mode === "echo" && <button className="small" onClick={() => { const r = G.current.run; if (r) r.preview(engine.now()); }}>Hear it all</button>}
+          {G.current.fade < 1 && (song.pace ?? settings.mode) === "flow" && <span className="pill teal">{G.current.fade === 0 ? "From memory" : `Backing ${Math.round(G.current.fade * 100)}%`}</span>}
+          {(song.pace ?? settings.mode) === "echo" && <button className="small" onClick={() => { const r = G.current.run; if (r) r.preview(engine.now()); }}>Hear it all</button>}
           <MicMeter state={avatar} />
           <button className="small" onClick={quit}>Quit</button>
         </div>
@@ -551,7 +556,7 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
           <GameCanvas view={view} />
           <BuddyPanel state={avatar} kind={settings.buddy} onSwap={(k) => setSetting("buddy", k)} />
         </div>
-        <CoachDrawer tip={tip} fallback={step && step.kind === "song" ? step.instruction : settings.mode === "echo" ? "Listen to each part, then sing it back." : settings.mode === "flow" ? "The song follows your voice. Sing it your way." : "Listening…"} tone="info" />
+        <CoachDrawer tip={tip} fallback={step && step.kind === "song" ? step.instruction : song.kind === "drill" && (song.pace ?? settings.mode) === "tempo" ? song.blurb : settings.mode === "echo" ? "Listen to each part, then sing it back." : settings.mode === "flow" ? "The song follows your voice. Sing it your way." : "Sing along with the piano, in time."} tone="info" />
         {toast && <div className="toast" role="status">{toast}</div>}
       </main>
     );
@@ -704,6 +709,17 @@ export function GameScreen({ engine, tracker, coach, synth, calibrated, avatar, 
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {tab === "drill" && onWorkout && (
+        <section className="card workout-card">
+          <div>
+            <p className="eyebrow">Pitch workout · about 10 minutes</p>
+            <h2>Land every note</h2>
+            <p className="fine">Sing along with the piano on short sounds: a sharp “ah”, a creaky hum, then “goo”, “koo” and “gug”, a step higher each round.</p>
+          </div>
+          <button className="primary big" onClick={onWorkout}>Start</button>
         </section>
       )}
 

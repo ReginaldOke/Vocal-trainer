@@ -575,6 +575,8 @@ export class GameRun {
     const sagged = tailCents.length >= 3 && !Number.isNaN(last.cents) && median(tailCents) - last.cents < -40;
     const ending: Ending = sagged ? "sagged" : faded ? "faded" : "held";
 
+    // Short, sharp notes are separated by silence on purpose; those gaps are not breaths.
+    if (this.song.song.short) breaths = 0;
     const report: PhraseReport = { end: endIndex, breaths, onset, evennessDb, ending };
     this.phrases.push(report);
     this.events.push({ type: "phrase", report });

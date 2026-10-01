@@ -32,6 +32,12 @@ export interface Song {
   earInterval?: number;
   /** each note's lyric is the vowel to sing, and the vowel is scored as well as the pitch */
   vowels?: boolean;
+  /** every note is sung short and sharp: it sounds for under half its beat, with silence after */
+  short?: boolean;
+  /** this exercise only makes sense one way, whatever the singer's usual pace */
+  pace?: "tempo" | "flow" | "echo";
+  /** how loudly the piano plays the tune along with the singer (0..1); drills led from the piano want it clear */
+  melody?: number;
 }
 
 export interface PreparedNote {
@@ -166,6 +172,25 @@ const earSteps = (pattern: number[], lyric: (semi: number) => string): SongStep[
 const EAR_PATTERN = [0, 4, 2, 7, 5, 3, 7, 0, 5, 2];
 const SOL = ["do", "di", "re", "ri", "mi", "fa", "fi", "sol", "si", "la", "li", "ti"];
 
+/**
+ * A pattern sung in one key, then a step higher, and so on up and back down, the way a teacher
+ * leads scales from the piano. `keys` are semitone shifts; a rest separates each round.
+ */
+function climbing(pattern: SongStep[], keys: number[], rest = 2): SongStep[] {
+  return keys.flatMap((k): SongStep[] => [...pattern.map(([semi, beats, lyric]): SongStep => [semi === null ? null : semi + k, beats, lyric]), [null, rest]]);
+}
+const UP_AND_BACK = [0, 1, 2, 3, 4, 3, 2, 1, 0];
+const UP_A_LITTLE = [0, 1, 2, 3, 2, 1, 0];
+const five = (syl: string): SongStep[] => [7, 5, 4, 2, 0].map((n): SongStep => [n, 1, syl]);
+const PW_AH = climbing([...five("ah"), ...five("ah")], UP_AND_BACK);
+const PW_HUM: SongStep[] = [0, 2, 4, 5, 7, 5, 4, 2, 0].map((n): SongStep => [n, 1, "mm"]);
+const PW_HUM_SHORT = climbing(PW_HUM, UP_AND_BACK);
+const PW_HUM_SMOOTH = climbing([...PW_HUM.slice(0, 8), [0, 2, "mm"]], UP_AND_BACK);
+const fromTheTop = (syl: string) => climbing([[12, 1, syl], [7, 1, syl], [4, 1, syl], [0, 2, syl]], UP_A_LITTLE);
+
+/** The drills of the pitch workout, in the order the workout runs them. */
+export const PITCH_WORKOUT_IDS = ["pw-ah", "pw-hum-short", "pw-hum-smooth", "pw-goo", "pw-koo", "pw-gug"];
+
 export const SONGS: Song[] = [
   { id: "twinkle", title: "Twinkle Twinkle", credit: "Traditional, Mozart's theme", kind: "song", tier: 1, bpm: 96, beatsPerBar: 4, blurb: "A leap of a fifth, then a gentle walk back down.", steps: TWINKLE },
   { id: "birthday", title: "Happy Birthday", credit: "Traditional", kind: "song", tier: 2, bpm: 90, beatsPerBar: 3, blurb: "The famous octave leap in line three. Aim from above.", steps: BIRTHDAY },
@@ -182,6 +207,12 @@ export const SONGS: Song[] = [
   { id: "vowel-top", title: "Shape the top", credit: "Drill", kind: "drill", tier: 3, bpm: 108, beatsPerBar: 4, vowels: true, blurb: "Climb on “ah” and let it turn into “uh” for the top two notes. That is how high notes stay easy.", steps: [0, 2, 4, 5, 7].flatMap((semi, i, arr): SongStep[] => [[semi, 1, i >= 3 ? "uh" : "ah"], ...(i === arr.length - 1 ? [[null, 1] as SongStep] : [])]).concat([7, 5, 4, 2, 0].map((semi, i): SongStep => [semi, i === 4 ? 2 : 1, i <= 1 ? "uh" : "ah"])).concat([[null, 2]]).concat([2, 4, 6, 7, 9].flatMap((semi, i, arr): SongStep[] => [[semi, 1, i >= 3 ? "uh" : "ah"], ...(i === arr.length - 1 ? [[null, 1] as SongStep] : [])])).concat([9, 7, 6, 4, 2].map((semi, i): SongStep => [semi, i === 4 ? 2 : 1, i <= 1 ? "uh" : "ah"])) },
   { id: "long-tones", title: "Long Tones", credit: "Drill", kind: "drill", tier: 1, bpm: 60, beatsPerBar: 4, blurb: "Five held notes. Hold each one dead straight for four seconds.", steps: LONG_TONES },
   { id: "five-note", title: "Five-Note Climb", credit: "Drill", kind: "drill", tier: 2, bpm: 132, beatsPerBar: 4, blurb: "Do to sol and back, climbing a semitone each round.", steps: FIVE_NOTE },
+  { id: "pw-ah", title: "Short, sharp “ah”", credit: "Pitch workout", kind: "drill", tier: 1, bpm: 104, beatsPerBar: 4, short: true, pace: "tempo", melody: 0.85, blurb: "Tongue out, a short ugly “ah” on each note: five notes down, twice, then a step higher. Not pretty, just accurate.", steps: PW_AH },
+  { id: "pw-hum-short", title: "Creaky door", credit: "Pitch workout", kind: "drill", tier: 1, bpm: 104, beatsPerBar: 4, short: true, pace: "tempo", melody: 0.85, blurb: "Lips closed, a short creaky hum on each note, up five and back. Keep everything under the chin soft.", steps: PW_HUM_SHORT },
+  { id: "pw-hum-smooth", title: "Creaky door, joined up", credit: "Pitch workout", kind: "drill", tier: 2, bpm: 104, beatsPerBar: 4, pace: "tempo", melody: 0.85, blurb: "The same hum with no gaps: one creaky line up five notes and back, landing on each one.", steps: PW_HUM_SMOOTH },
+  { id: "pw-goo", title: "“Goo” from the top", credit: "Pitch workout", kind: "drill", tier: 2, bpm: 96, beatsPerBar: 4, short: true, pace: "tempo", melody: 0.85, blurb: "Start from a cheering “woo!” feeling, then “goo” skipping down from the top. Light and easy, never shouted.", steps: fromTheTop("goo") },
+  { id: "pw-koo", title: "“Koo” from the top", credit: "Pitch workout", kind: "drill", tier: 2, bpm: 96, beatsPerBar: 4, short: true, pace: "tempo", melody: 0.85, blurb: "The same skips down on “koo”. Short, exact, and loose in the throat.", steps: fromTheTop("koo") },
+  { id: "pw-gug", title: "“Gug”", credit: "Pitch workout", kind: "drill", tier: 3, bpm: 96, beatsPerBar: 4, short: true, pace: "tempo", melody: 0.85, blurb: "Everything together on “gug”, skipping down from the top. A soft g, never a punched one.", steps: fromTheTop("gug") },
   { id: "leaps", title: "Big Leaps", credit: "Drill", kind: "drill", tier: 2, bpm: 100, beatsPerBar: 4, blurb: "Jump up by bigger and bigger steps. Hear the note in your head before you leap.", steps: LEAPS },
   { id: "octave", title: "Octave Scale", credit: "Drill", kind: "drill", tier: 3, bpm: 120, beatsPerBar: 4, blurb: "Eight notes up and back. Get lighter, not louder, near the top.", steps: OCTAVE },
   { id: "arpeggio", title: "Broken Chord Ladder", credit: "Drill", kind: "drill", tier: 3, bpm: 120, beatsPerBar: 4, blurb: "Do mi sol do, rising a tone each round.", steps: ARPEGGIO },
@@ -216,7 +247,12 @@ export function prepareSong(song: Song, tonic: number, rate = 1): PreparedSong {
   }
   const { lo, hi } = songSpan(song);
   const last = notes[notes.length - 1];
-  return { song, tonic, notes, phraseEnds: findPhraseEnds(notes, beat), leadIn, end: last.start + last.dur, beat, lo: tonic + lo, hi: tonic + hi };
+  // Phrases are read from the written lengths; short, sharp notes are clipped only afterwards,
+  // so the silence between them is not mistaken for a breath.
+  const phraseEnds = findPhraseEnds(notes, beat);
+  const end = last.start + last.dur;
+  if (song.short) for (const n of notes) n.dur = Math.min(n.dur, Math.max(0.16, beat * 0.45));
+  return { song, tonic, notes, phraseEnds, leadIn, end, beat, lo: tonic + lo, hi: tonic + hi };
 }
 
 /** One line of a prepared song (notes from..to), on its own with a one-bar count-in, for practising. */

@@ -1,6 +1,6 @@
 import type { GlideConfig } from "./glide";
 import type { Progress } from "./progress";
-import { SONGS, type Song } from "./songs";
+import { PITCH_WORKOUT_IDS, SONGS, type Song } from "./songs";
 
 /**
  * A short lesson, the way a teacher would shape ten minutes: wake the voice up gently, work on
@@ -90,4 +90,24 @@ export function adjustSirenSpan(progress: Progress, smoothness: number, coverage
   else if (coverage < 0.5) after = Math.max(4, before - 1);
   progress.sirenSpan = after;
   return after - before;
+}
+
+/**
+ * A ten-minute pitch workout: short sharp sounds first, because a short note has to be found at
+ * once rather than slid into; then the same accuracy with the sound joined up; then the top of
+ * the voice set free with a cheer before skipping down from it; and finally everything together.
+ */
+export function buildPitchWorkout(progress: Progress, cal: { low: number; high: number; comfort?: number } | null): LessonPlan {
+  const [ah, humShort, humSmooth, goo, koo, gug] = PITCH_WORKOUT_IDS.map(song);
+  const { sLow, sHigh } = sirenRange(progress, cal);
+  const steps: LessonStep[] = [
+    { kind: "song", id: "pw-ah", title: ah.title, instruction: "Tongue out, short and ugly. Sing along with the piano; each round is a step higher.", song: ah },
+    { kind: "song", id: "pw-hum-short", title: humShort.title, instruction: "Lips closed, short creaky hums. Thumbs under your chin: it should stay soft.", song: humShort, quiet: true },
+    { kind: "song", id: "pw-hum-smooth", title: humSmooth.title, instruction: "Same hum, no gaps. Aim at each note like target practice.", song: humSmooth, quiet: true },
+    { kind: "glide", id: "pw-woo", title: "A big “woo!”", instruction: "Cheer like your team just scored: start high and let it fall. Twice. Notice how free the top feels.", glide: { from: sLow, to: sHigh, repeats: 2, direction: "down" } },
+    { kind: "song", id: "pw-goo", title: goo.title, instruction: "Keep that “woo!” feeling on “goo”. Short, easy notes skipping down.", song: goo },
+    { kind: "song", id: "pw-koo", title: koo.title, instruction: "Now “koo”. Same shape, same ease.", song: koo },
+    { kind: "song", id: "pw-gug", title: gug.title, instruction: "“Gug” with a soft g. If you lose the notes, go back to the short “ah”.", song: gug },
+  ];
+  return { steps, sections: [{ title: "Short and sharp", at: 0 }, { title: "Creaky door", at: 1 }, { title: "Free the top", at: 3 }, { title: "All together", at: 6 }], focus: "Landing every note" };
 }
