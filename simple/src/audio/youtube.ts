@@ -85,6 +85,8 @@ export class YouTubePlayer {
             if (e.data === YT.PlayerState.PLAYING) this.set("playing");
             else if (e.data === YT.PlayerState.PAUSED) this.set("paused");
             else if (e.data === YT.PlayerState.ENDED) this.set("ended");
+            // Unstarted again after loading means YouTube is showing an advert before the song.
+            else if (e.data === -1 && this.state !== "loading") this.set("ready");
           },
           onError: (e) => {
             this.error = e.data === 101 || e.data === 150

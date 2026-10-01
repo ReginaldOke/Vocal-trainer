@@ -291,7 +291,8 @@ export function App() {
       p.setVolume(volume);
       p.play();
     }).catch((e: Error) => { if (!gone) setYt((y) => ({ ...y, error: e.message })); });
-    const poll = window.setInterval(() => { if (!gone && p.state !== "loading" && p.state !== "error") setYt((y) => ({ ...y, time: p.time(), duration: p.duration() })); }, 250);
+    // The clock follows the song only: while YouTube shows an advert its time is the advert's.
+    const poll = window.setInterval(() => { if (!gone && p.state !== "loading" && p.state !== "error") setYt((y) => ({ ...y, time: p.state === "playing" ? p.time() : y.time, duration: p.duration() })); }, 250);
     return () => { gone = true; off(); clearInterval(poll); p.destroy(); player.current = null; host.replaceChildren(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track]);
