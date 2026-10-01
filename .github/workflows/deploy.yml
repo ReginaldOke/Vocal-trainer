@@ -28,6 +28,11 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+      # The simplified app is its own small project; it is published beside the full one at /simple/.
+      - run: npm ci
+        working-directory: simple
+      - run: npm run build
+        working-directory: simple
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

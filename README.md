@@ -23,6 +23,10 @@ Two ways to play:
 
 A guided assessment measures your range, then runs a held note, "Happy Birthday" and a five-note scale on the same self-paced highway, and ends with a short practice plan. The report opens with a verdict ("You're a baritone"), five famous singers whose voices sit where yours does, and a chart of your range against about seventy well-known singers (`src/coach/singers.ts`, approximate reported extremes). The measured range also sets the key of every arcade song.
 
+## Two apps
+
+This folder is the full app, saved at the git tag `v1-full`. A much simpler one lives in [`simple/`](simple/README.md): one pitch screen and three buttons (Record, Lesson, Song). It is published beside the full app at `/simple/`.
+
 ## Run and deploy
 
 ```
