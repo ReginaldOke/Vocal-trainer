@@ -63,8 +63,6 @@ button.icon[aria-pressed="true"] { color: var(--accent); }
 .thumb rect { fill: var(--accent); }
 .thumb path { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; }
 .card .remove { position: absolute; top: 0.9rem; right: 0.9rem; background: rgba(16, 17, 20, 0.75); padding: 0.4rem; }
-.card.import { place-content: center; justify-items: center; text-align: center; border-style: dashed; border-color: var(--line-strong); color: var(--ink-soft); min-height: 6.5rem; }
-.card.import:hover { color: var(--ink); }
 /* On a wide screen the picker is a panel in the middle, not a strip along the bottom. */
 @media (min-width: 720px) {
   .backdrop { place-items: center; padding: 2rem; }
@@ -78,3 +76,27 @@ button.icon[aria-pressed="true"] { color: var(--accent); }
 .player { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.9rem calc(0.7rem + env(safe-area-inset-bottom, 0px)); }
 .player .time { font-variant-numeric: tabular-nums; font-size: 0.82rem; color: var(--ink-soft); }
 .player input[type="range"] { flex: 1; min-width: 4rem; accent-color: var(--ink); }
+
+/* ---------- Songs: the real recording in YouTube's player, beside the pitch picture ---------- */
+.video { position: absolute; top: 0.5rem; right: 0.6rem; width: 356px; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; background: #000; }
+.video > div, .video iframe { width: 100%; height: 100%; display: block; border: 0; }
+.stage-wrap[data-video="true"] .stage { width: calc(100% - 1.2rem - 356px - 0.6rem); }
+.stage-wrap[data-video="true"] .overlay { right: calc(0.6rem + 356px + 0.6rem); }
+.transport.song { gap: 0.7rem; padding: 0 0.3rem; }
+.transport .time { font-variant-numeric: tabular-nums; font-size: 0.82rem; color: var(--ink-soft); }
+.transport .scrub { flex: 1; min-width: 5rem; accent-color: var(--ink); }
+.vol { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--ink-soft); }
+.vol input { width: 5.5rem; accent-color: var(--ink); }
+.find { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0.3rem 0.15rem 0.8rem; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink-soft); }
+.find input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; padding: 0.65rem 0; }
+.find input::placeholder { color: var(--ink-soft); }
+.cards[data-busy="true"] { opacity: 0.45; pointer-events: none; }
+.cover { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 9px; background: rgba(255, 255, 255, 0.03); }
+.card small { color: var(--ink-soft); font-size: 0.8rem; padding: 0 0.15rem; margin-top: -0.35rem; }
+@media (max-width: 719px) {
+  .video { left: 0.6rem; right: 0.6rem; width: auto; height: 200px; aspect-ratio: auto; }
+  .stage-wrap[data-video="true"] .stage { width: calc(100% - 1.2rem); top: calc(0.5rem + 200px + 0.5rem); height: calc(100% - 0.5rem - 200px - 0.5rem); }
+  .stage-wrap[data-video="true"] .overlay { right: 0.6rem; top: calc(0.5rem + 200px + 0.5rem); }
+  .transport.song { flex-wrap: wrap; gap: 0.5rem; }
+  .vol input { width: 4.5rem; }
+}

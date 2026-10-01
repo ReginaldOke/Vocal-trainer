@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { isBlackKey, noteName } from "./audio/pitch";
 import type { GlideRun } from "./glide";
 import type { Take, TracePoint } from "./sing";
-import { LATENCY } from "./sing";
 import { drawRibbon, smoothWidths, thickness, type RibbonPoint } from "./ribbon";
 
 /** What the stage draws. Written by the app as audio arrives, read here every animation frame. */
@@ -111,27 +110,35 @@ export function Stage({ view, onTap }: { view: React.MutableRefObject<StageView>
 
       if (take) {
         const t = take.time(now);
-        const sounding = take.noteAt(t), sungNow = take.noteAt(t - LATENCY);
+        const sounding = take.noteAt(t), target = take.target;
+        const listening = take.listening(now);
+        // The singer's notes do not move: they wait, laid out to the right of the line, and are
+        // ticked off as each is landed. Only the piano's turn runs on the clock.
+        const room = W - hitX - 40;
+        const sx = Math.min(pps, room / Math.max(1, take.p.length));
         let wordRight = -Infinity;
         for (const n of take.p.notes) {
           const yy = y(n.midi), h = clamp(row * 0.78, 8, 18);
+          const solo = n.role === "solo";
+          if (solo && listening) continue;
           // A short, sharp note is drawn as a dot rather than a sliver.
-          const x0 = hitX + (n.start - t) * pps, w = Math.max(h, n.dur * pps);
+          const x0 = solo ? hitX + 26 + n.start * sx : hitX + (n.start - t) * pps;
+          const w = Math.max(h, n.dur * (solo ? sx : pps) - (solo ? 3 : 0));
           if (x0 > W || x0 + w < gutter) continue;
           const left = Math.max(gutter, x0), width = w - (left - x0);
           g.beginPath();
           g.roundRect(left, yy - h / 2, Math.max(2, width), h, h / 2);
-          if (n.role === "cue") {
+          if (!solo) {
             // The piano's notes: outlines, filled while they sound.
             if (sounding === n) { g.fillStyle = "rgba(159,176,255,0.55)"; g.fill(); }
             g.strokeStyle = "rgba(159,176,255,0.7)"; g.lineWidth = 1.25; g.stroke();
           } else {
             const state = take.landed(n.i);
-            g.fillStyle = state === true ? GREEN : state === false && x0 + w < hitX ? "rgba(240,100,124,0.55)" : sungNow === n ? "rgba(159,176,255,0.95)" : "rgba(159,176,255,0.4)";
+            g.fillStyle = state === true ? GREEN : state === false ? "rgba(240,100,124,0.55)" : target === n ? "rgba(159,176,255,0.95)" : "rgba(159,176,255,0.35)";
             g.fill();
           }
           if (n.word) {
-            const isNow = n.role === "cue" ? sounding === n : sungNow === n;
+            const isNow = solo ? target === n : sounding === n;
             g.textAlign = "left"; g.textBaseline = "alphabetic";
             g.font = `${isNow ? 600 : 400} ${narrow ? 13 : 15}px Inter, sans-serif`;
             g.fillStyle = isNow ? "#ffffff" : INK + "0.45)";
@@ -140,7 +147,7 @@ export function Stage({ view, onTap }: { view: React.MutableRefObject<StageView>
             if (wx >= gutter - 2 && wx < W) { g.fillText(n.word, wx, H - 12); wordRight = wx + g.measureText(n.word).width; }
           }
         }
-        turn = take.listening(now) ? "Listen" : "Sing";
+        turn = listening ? "Listen" : "Sing";
         g.textAlign = "left"; g.textBaseline = "middle";
       }
 

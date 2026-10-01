@@ -7,13 +7,12 @@ const SAMPLES: [string, number][] = [
 ];
 
 /**
- * A real piano: recorded grand-piano notes, played back at the pitch asked for. Also the soft
- * tick that counts the singer in. Everything goes to one output, so one switch can silence it.
+ * A real piano: recorded grand-piano notes, played back at the pitch asked for. Everything goes
+ * to one output, so one switch can silence it.
  */
 export class Piano {
   private buffers = new Map<number, AudioBuffer>();
   private live = new Set<GainNode>();
-  private tickBuffer: AudioBuffer | null = null;
   ready: Promise<void>;
 
   constructor(private ctx: AudioContext, private out: AudioNode) {
@@ -86,26 +85,6 @@ export class Piano {
     const path = [...Array.from({ length: n + 1 }, (_, i) => from + i * dir), ...Array.from({ length: n }, (_, i) => to - (i + 1) * dir)];
     path.forEach((m, i) => this.play(m, when + i * step, i === path.length - 1 ? 0.8 : step * 1.6, 0.55));
     return path.length * step + 0.8;
-  }
-
-  /** A soft tick. It is noise, not a note, so it is never mistaken for singing. */
-  tick(when: number) {
-    if (!this.tickBuffer) {
-      const len = Math.floor(this.ctx.sampleRate * 0.03);
-      this.tickBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-      const d = this.tickBuffer.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
-    }
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.tickBuffer;
-    const bp = this.ctx.createBiquadFilter();
-    bp.type = "bandpass"; bp.frequency.value = 1800; bp.Q.value = 2;
-    const g = this.ctx.createGain();
-    g.gain.value = 0.22;
-    src.connect(bp).connect(g).connect(this.out);
-    this.live.add(g);
-    src.onended = () => { this.live.delete(g); g.disconnect(); };
-    src.start(when);
   }
 
   /** Stop everything that is sounding or still to come. */
