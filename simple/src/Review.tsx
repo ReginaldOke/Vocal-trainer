@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Maximize2, Pause, Play, ZoomIn, ZoomOut } from "lucide-react";
 import { PitchDetector, hzToMidi, isBlackKey, noteName } from "./audio/pitch";
+import { drawRibbon, smoothWidths, thickness, type RibbonPoint } from "./ribbon";
 
 interface Pt { t: number; midi: number; db: number }
 
@@ -73,6 +74,9 @@ export function Review({ blob, onClose, onNote }: { blob: Blob; onClose: () => v
     // Frame the picture on where the voice actually was, ignoring the odd stray reading.
     const voiced = state.pts.filter((p) => !Number.isNaN(p.midi)).map((p) => p.midi).sort((a, b) => a - b);
     const lo = voiced.length ? voiced[Math.floor(voiced.length * 0.05)] - 4 : 52, hi = voiced.length ? voiced[Math.ceil(voiced.length * 0.95) - 1] + 4 : 70;
+    // The quiet and loud ends of this take, so thickness uses the whole range the singer used.
+    const levels = state.pts.filter((p) => !Number.isNaN(p.midi)).map((p) => p.db).sort((a, b) => a - b);
+    const quiet = levels.length ? levels[Math.floor(levels.length * 0.1)] : -45, loudest = levels.length ? levels[Math.ceil(levels.length * 0.95) - 1] : -15;
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -94,18 +98,20 @@ export function Review({ blob, onClose, onNote }: { blob: Blob; onClose: () => v
       const stepS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 30].find((s) => s / z.spp >= 70) ?? 60;
       g.fillStyle = "rgba(240,238,233,0.4)"; g.textBaseline = "alphabetic";
       for (let t = Math.ceil(z.left / stepS) * stepS; x(t) < W; t += stepS) g.fillText(stepS < 1 ? t.toFixed(1) : fmt(t), x(t) + 3, H - 4);
-      g.lineCap = "round";
+      // The voice as a band: thick where it was loud, thin where it was soft.
       const pts = state.pts;
-      for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1], b = pts[i];
-        if (Number.isNaN(a.midi) || Number.isNaN(b.midi) || Math.abs(b.midi - a.midi) > 2.5) continue;
+      let run: RibbonPoint[] = [], prev: Pt | null = null;
+      const flush = () => { if (run.length > 1) { smoothWidths(run); drawRibbon(g, run, (c) => c); } run = []; prev = null; };
+      for (const b of pts) {
         const xb = x(b.t);
-        if (xb < GUTTER || x(a.t) > W) continue;
+        if (Number.isNaN(b.midi) || xb < GUTTER - 40 || xb > W + 40) { flush(); continue; }
+        // A jump straight to another note is a new stroke, not a thick bar joining the two.
+        if (prev && Math.abs(b.midi - prev.midi) > 1.5) flush();
         const off = Math.abs(b.midi - Math.round(b.midi)) * 100;
-        g.strokeStyle = off <= 20 ? "#3ecfa9" : off <= 40 ? "#f2b14c" : "#f0647c";
-        g.lineWidth = 2 + clamp((b.db + 50) / 40, 0, 1) * 8;
-        g.beginPath(); g.moveTo(Math.max(GUTTER, x(a.t)), y(a.midi)); g.lineTo(xb, y(b.midi)); g.stroke();
+        run.push({ x: Math.max(GUTTER, xb), y: y(b.midi), w: thickness(b.db, quiet, loudest, 3, clamp(row * 1.1, 12, 22)), c: off <= 20 ? "#3ecfa9" : off <= 40 ? "#f2b14c" : "#f0647c" });
+        prev = b;
       }
+      flush();
       const t = audio.current?.currentTime ?? 0;
       if (x(t) >= GUTTER) { g.fillStyle = "#fff"; g.fillRect(x(t) - 0.75, top, 1.5, bottom - top); }
     };

@@ -3,6 +3,7 @@ import { isBlackKey, noteName } from "./audio/pitch";
 import type { GlideRun } from "./glide";
 import type { Take, TracePoint } from "./sing";
 import { LATENCY } from "./sing";
+import { drawRibbon, smoothWidths, thickness, type RibbonPoint } from "./ribbon";
 
 /** What the stage draws. Written by the app as audio arrives, read here every animation frame. */
 export interface StageView {
@@ -16,9 +17,13 @@ export interface StageView {
   tap: { midi: number; t: number } | null;
   /** notes held down on the computer keyboard */
   held: Set<number>;
+  /** the quiet and loud ends of this voice, in dBFS: the line is thin at one and thick at the other */
+  loud: { lo: number; hi: number };
 }
 
-const GREEN = "#3ecfa9", AMBER = "#f2b14c", RED = "#f0647c", BLUE = "#9fb0ff", INK = "rgba(240,238,233,";
+const GREEN = "#3ecfa9", AMBER = "#f2b14c", RED = "#f0647c", BLUE = "#9fb0ff";
+const GREEN_RGB = "62,207,169", AMBER_RGB = "242,177,76", RED_RGB = "240,100,124", BLUE_RGB = "159,176,255";
+const INK = "rgba(240,238,233,";
 const clamp = (v: number, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 
 /**
@@ -147,22 +152,32 @@ export function Stage({ view, onTap }: { view: React.MutableRefObject<StageView>
         g.textAlign = "left"; g.textBaseline = "middle";
       }
 
-      // The voice: a line flowing away to the left, thicker when louder.
-      g.lineCap = "round";
+      // The voice: a band flowing away to the left, thick when loud and thin when soft.
       const tr = v.trace;
-      for (let i = 1; i < tr.length; i++) {
-        const a = tr[i - 1], b = tr[i];
-        const age = now - b.t;
-        if (age > 5 || !a.voiced || !b.voiced || b.t - a.t > 0.12 || Math.abs(b.midi - a.midi) > 2.5) continue;
-        const xb = hitX - age * pps;
-        if (xb < gutter) continue;
+      const maxW = clamp(row * 0.95, 10, 20);
+      const fades = new Map<string, CanvasGradient>();
+      const fade = (c: string) => {
+        let grad = fades.get(c);
+        if (!grad) {
+          grad = g.createLinearGradient(hitX - 5 * pps, 0, hitX, 0);
+          grad.addColorStop(0, `rgba(${c},0)`); grad.addColorStop(0.5, `rgba(${c},0.7)`); grad.addColorStop(1, `rgba(${c},0.97)`);
+          fades.set(c, grad);
+        }
+        return grad;
+      };
+      let run: RibbonPoint[] = [], prev: TracePoint | null = null;
+      const flush = () => { if (run.length > 1) { smoothWidths(run); drawRibbon(g, run, fade); } run = []; prev = null; };
+      for (const b of tr) {
+        const age = now - b.t, xb = hitX - age * pps;
+        if (!b.voiced || age > 5 || xb < gutter) { flush(); continue; }
+        // A jump straight to another note is a new stroke, not a thick bar joining the two.
+        if (prev && (b.t - prev.t > 0.12 || Math.abs(b.midi - prev.midi) > 1.5)) flush();
         const off = Math.abs(b.midi - Math.round(b.midi)) * 100;
         const q = b.q >= 0 ? b.q : off <= 20 ? 1 : off <= 40 ? 0.5 : 0;
-        g.strokeStyle = b.q === 2 ? BLUE : q === 1 ? GREEN : q === 0.5 ? AMBER : RED;
-        g.lineWidth = 2 + clamp((b.db + 50) / 40) * 6;
-        g.globalAlpha = clamp(1 - age / 5) * 0.95;
-        g.beginPath(); g.moveTo(Math.max(gutter, hitX - (now - a.t) * pps), y(a.midi)); g.lineTo(xb, y(b.midi)); g.stroke();
+        run.push({ x: xb, y: y(b.midi), w: thickness(b.db, v.loud.lo, v.loud.hi, 2.5, maxW), c: b.q === 2 ? BLUE_RGB : q === 1 ? GREEN_RGB : q === 0.5 ? AMBER_RGB : RED_RGB });
+        prev = b;
       }
+      flush();
       g.globalAlpha = 1;
       const last = tr[tr.length - 1];
       if (last && last.voiced && now - last.t < 0.2) {

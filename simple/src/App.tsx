@@ -47,6 +47,46 @@ const KEYS: Record<string, number> = {
   KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16,
 };
 
+/**
+ * A small picture of a lesson or song: its notes as they rise and fall, and its slides as arcs.
+ * A song shows its whole tune; a lesson shows the opening of each exercise.
+ */
+function Thumb({ parts }: { parts: Part[] }) {
+  const shapes = useMemo(() => {
+    const notes: { t: number; d: number; m: number }[] = [];
+    const arcs: { t0: number; t1: number; a: number; b: number }[] = [];
+    let t = 0;
+    for (const p of parts) {
+      if ("slide" in p) {
+        arcs.push({ t0: t, t1: t + 2.4, a: p.down ? 64 : 56, b: p.down ? 56 : 64 });
+        t += 3;
+        continue;
+      }
+      const L = lines(p.song, 60).lines;
+      for (const line of parts.length === 1 && !p.song.rounds ? L : L.slice(0, 1)) {
+        if (notes.length > 60) break;
+        for (const n of line.notes) notes.push({ t: t + n.start, d: n.dur, m: n.midi });
+        t += line.length;
+      }
+      t += 0.6;
+    }
+    const all = [...notes.map((n) => n.m), ...arcs.flatMap((a) => [a.a, a.b])];
+    const lo = Math.min(...all), hi = Math.max(...all), total = Math.max(0.1, t - 0.6);
+    const x = (v: number) => 5 + (v / total) * 110;
+    const y = (m: number) => (hi === lo ? 22 : 38 - ((m - lo) / (hi - lo)) * 32);
+    return {
+      bars: notes.map((n) => ({ x: x(n.t), y: y(n.m) - 1.6, w: Math.max(1.8, x(n.t + n.d) - x(n.t) - 0.6) })),
+      paths: arcs.map((a) => `M ${x(a.t0)} ${y(a.a)} Q ${x((a.t0 + a.t1) / 2)} ${2 * y(a.b) - y(a.a)} ${x(a.t1)} ${y(a.a)}`),
+    };
+  }, [parts]);
+  return (
+    <svg className="thumb" viewBox="0 0 120 44" aria-hidden="true">
+      {shapes.bars.map((b, i) => <rect key={i} x={b.x} y={b.y} width={b.w} height={3.2} rx={1.6} />)}
+      {shapes.paths.map((d, i) => <path key={i} d={d} />)}
+    </svg>
+  );
+}
+
 const SAVE = "vocal-coach-simple.centre";
 const loadCentre = () => { const n = Number(localStorage.getItem(SAVE)); return Number.isFinite(n) && n >= 40 && n <= 80 ? n : 60; };
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -54,8 +94,8 @@ const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return
 
 export function App() {
   const engine = useRef(new Engine()).current;
-  const view = useRef<StageView>({ now: () => engine.now(), trace: [], take: null, glide: null, listenUntil: 0, tap: null, held: new Set() });
-  const R = useRef({ piano: null as Piano | null, centre: loadCentre(), heard: [] as number[], lastUi: 0, recAt: 0, guides: new Map<number, number>(), keys: new Map<string, number>(), octave: null as number | null, slideEnd: 0, segs: [] as Seg[], index: 0, playing: false, loop: false });
+  const view = useRef<StageView>({ now: () => engine.now(), trace: [], take: null, glide: null, listenUntil: 0, tap: null, held: new Set(), loud: { lo: -42, hi: -18 } });
+  const R = useRef({ piano: null as Piano | null, centre: loadCentre(), heard: [] as number[], lastUi: 0, recAt: 0, levels: [] as number[], guides: new Map<number, number>(), keys: new Map<string, number>(), octave: null as number | null, slideEnd: 0, segs: [] as Seg[], index: 0, playing: false, loop: false });
 
   const [micError, setMicError] = useState("");
   const [note, setNote] = useState("");
@@ -166,11 +206,18 @@ export function App() {
       if (r.heard.length > 900) r.heard.splice(0, 300);
       if (r.heard.length >= 150 && r.heard.length % 60 === 0) { r.centre = Math.round(median(r.heard)); try { localStorage.setItem(SAVE, String(r.centre)); } catch { /* storage blocked */ } }
     }
+    if (f.voiced) { r.levels.push(f.db); if (r.levels.length > 400) r.levels.splice(0, 100); }
     v.trace.push({ t: f.t, midi: f.midi, db: f.db, voiced: f.voiced, q });
     if (v.trace.length > 900) v.trace.splice(0, 300);
     if (f.t - r.lastUi > 0.1) {
       r.lastUi = f.t;
       setNote(f.voiced ? noteName(f.midi) : "");
+      // Follow how quietly and loudly this voice is singing, so line thickness always has room to move.
+      if (r.levels.length >= 20) {
+        const sorted = [...r.levels].sort((a, b) => a - b);
+        const lo = sorted[Math.floor(sorted.length * 0.1)], hi = sorted[Math.ceil(sorted.length * 0.95) - 1];
+        v.loud = { lo: v.loud.lo + (lo - v.loud.lo) * 0.1, hi: v.loud.hi + (hi - v.loud.hi) * 0.1 };
+      }
       if (engine.recording) setRecSecs(f.t - r.recAt);
     }
   }), [engine, next]);
@@ -322,22 +369,24 @@ export function App() {
         <div className="backdrop" onClick={() => setSheet(null)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={sheet === "lesson" ? "Lessons" : "Songs"}>
             <i className="grip" aria-hidden="true" />
-            <ul className="list">
-              {sheet === "lesson"
-                ? LESSONS.map((l) => <li key={l.title}><button onClick={() => void open(l)}>{l.title}</button></li>)
-                : [...custom, ...SONGS].map((s) => (
-                  <li key={s.id}>
-                    <button onClick={() => void open({ title: s.title, parts: [{ song: s }] })}>{s.title}</button>
-                    {s.custom && <button className="icon" onClick={() => removeSong(s.id)} aria-label={`Remove ${s.title}`}><Trash2 size={16} /></button>}
-                  </li>
-                ))}
-            </ul>
-            {sheet === "song" && (
-              <label className="import">
-                <Upload size={16} /> Import MIDI
-                <input type="file" accept=".mid,.midi,.kar,audio/midi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importSong(f); e.target.value = ""; }} />
-              </label>
-            )}
+            <div className="cards">
+              {(sheet === "lesson" ? LESSONS : [...custom, ...SONGS].map((s): Lesson & { song?: Song } => ({ title: s.title, parts: [{ song: s }], song: s }))).map((l: Lesson & { song?: Song }) => (
+                <div className="card" key={l.song?.id ?? l.title}>
+                  <button onClick={() => void open(l)}>
+                    <Thumb parts={l.parts} />
+                    <span>{l.title}</span>
+                  </button>
+                  {l.song?.custom && <button className="icon remove" onClick={() => removeSong(l.song!.id)} aria-label={`Remove ${l.title}`}><Trash2 size={15} /></button>}
+                </div>
+              ))}
+              {sheet === "song" && (
+                <label className="card import">
+                  <Upload size={20} />
+                  <span>Import MIDI</span>
+                  <input type="file" accept=".mid,.midi,.kar,audio/midi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importSong(f); e.target.value = ""; }} />
+                </label>
+              )}
+            </div>
             {importError && <p className="error">{importError}</p>}
           </div>
         </div>
