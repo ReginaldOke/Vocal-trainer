@@ -25,7 +25,7 @@ A guided assessment measures your range, then runs a held note, "Happy Birthday"
 
 ## Two apps
 
-This folder is the full app, saved at the git tag `v1-full`. A much simpler one lives in [`simple/`](simple/README.md): one pitch screen and three buttons (Record, Lesson, Song). It is published beside the full app at `/simple/`.
+This folder is the earlier, full app, saved at the git tag `v1-full` and published at `/full/`. The app people open at the main address is the much simpler one in [`simple/`](simple/README.md): one pitch screen, tap any note to hear it, and three buttons (Record, Lesson, Song).
 
 ## Run and deploy
 

@@ -1,315 +1,270 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Circle, FileMusic, Minus, Music, Plus, Square, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, BookOpen, Circle, Minus, Music, Pause, Play, Plus, Repeat, SkipBack, SkipForward, Square, Trash2, Upload } from "lucide-react";
 import { Engine, type Frame } from "./audio/engine";
+import { Piano } from "./audio/piano";
 import { noteName } from "./audio/pitch";
-import { Sound } from "./audio/sound";
 import { GlideRun } from "./glide";
 import { songFromMidi } from "./midi";
 import { Review } from "./Review";
-import { LATENCY, Take } from "./sing";
-import { EXERCISES, SONGS, loadCustom, prepare, saveCustom, type Song } from "./songs";
+import { Take, folded } from "./sing";
+import { EXERCISES, SONGS, callAndResponse, lines, loadCustom, saveCustom, type Line, type Song } from "./songs";
 import { Stage, type StageView } from "./Stage";
 
-/** One thing to do: sing a song or exercise along with the piano, or slide the voice like a siren. */
-type Step =
-  | { kind: "song"; title: string; tip: string; song: Song }
-  | { kind: "slide"; title: string; tip: string; down?: boolean; repeats: number };
+/** A part of a lesson: an exercise or song taken a line at a time, or a slide of the voice between two notes. */
+type Part = { song: Song } | { slide: string; down?: boolean };
 
-interface Lesson { id: string; title: string; minutes: number; about: string; steps: Step[] }
-
-const sing = (song: Song, tip: string): Step => ({ kind: "song", title: song.title, tip, song });
+interface Lesson { title: string; parts: Part[] }
 
 const LESSONS: Lesson[] = [
-  {
-    id: "warm", title: "Warm up", minutes: 3, about: "Wake the voice up gently before anything else.",
-    steps: [
-      { kind: "slide", title: "Hum a siren", tip: "Lips closed. Slide slowly from the bottom line to the top and back, like a distant siren. Twice.", repeats: 2 },
-      { kind: "slide", title: "Lip trill siren", tip: "Let your lips flap like a horse and do the same slide. If the trill stops, you are pushing too hard.", repeats: 2 },
-      sing(EXERCISES.ng, "As in “sing”. Quiet and easy, along with the piano."),
-    ],
-  },
-  {
-    id: "pitch", title: "Pitch workout", minutes: 10, about: "Short sounds that have to land on the note at once: “ah”, a creaky hum, then “goo”, “koo” and “gug”.",
-    steps: [
-      sing(EXERCISES.ah, "Tongue out, a short ugly “ah” on each note. Each round is a step higher."),
-      sing(EXERCISES.humShort, "Lips closed, short creaky hums. Thumbs under your chin: it should stay soft."),
-      sing(EXERCISES.humSmooth, "The same hum with no gaps. Aim at each note like target practice."),
-      { kind: "slide", title: "A big “woo!”", tip: "Cheer like your team just scored: start at the top line and let it fall, then come back up. Twice.", down: true, repeats: 2 },
-      sing(EXERCISES.goo, "Keep that “woo!” feeling on “goo”. Short, easy notes skipping down."),
-      sing(EXERCISES.koo, "Now “koo”. Same shape, same ease."),
-      sing(EXERCISES.gug, "“Gug” with a soft g. Never punched."),
-    ],
-  },
-  { id: "long", title: "Long notes", minutes: 2, about: "Hold five notes steady, one breath each.", steps: [sing(EXERCISES.long, "One easy breath, then hold each note steady to the end of its bar.")] },
-  {
-    id: "ear", title: "Hear it, sing it back", minutes: 3, about: "The piano plays a note, then goes quiet while you sing it.",
-    steps: [sing(EXERCISES.echo, "Listen to the note, hear it in your head, then sing it back."), sing(EXERCISES.echoLeap, "Same again with bigger jumps between the notes.")],
-  },
+  { title: "Warm up", parts: [{ slide: "Hum" }, { slide: "Lip trill" }, { song: EXERCISES.ng }] },
+  { title: "Pitch workout", parts: [{ song: EXERCISES.ah }, { song: EXERCISES.humShort }, { song: EXERCISES.humSmooth }, { slide: "“Woo”", down: true }, { song: EXERCISES.goo }, { song: EXERCISES.koo }, { song: EXERCISES.gug }] },
+  { title: "Long notes", parts: [{ song: EXERCISES.long }] },
+  { title: "Match a note", parts: [{ song: EXERCISES.match }, { song: EXERCISES.leaps }] },
 ];
 
-interface Saved { centre: number; best: Record<string, number> }
-const SAVE = "vocal-coach-simple.state";
-const loadSaved = (): Saved => { try { return { centre: 60, best: {}, ...JSON.parse(localStorage.getItem(SAVE) ?? "{}") }; } catch { return { centre: 60, best: {} }; } };
+/** One thing to hear and then do: a line to sing back, or a slide to copy. */
+interface Seg { title: string; line?: Line; beat: number; bar: number; lo: number; hi: number; slide?: { from: number; to: number; down: boolean } }
 
+/** Lay a lesson out as a plain list of lines and slides, in the singer's key. */
+function flatten(parts: Part[], centre: number, shift: number): Seg[] {
+  return parts.flatMap((p): Seg[] => {
+    if ("slide" in p) {
+      const lo = centre - 4 + shift, hi = centre + 4 + shift;
+      const seg: Seg = { title: p.slide, beat: 0.6, bar: 2.4, lo, hi, slide: { from: lo, to: hi, down: !!p.down } };
+      return [seg, seg];
+    }
+    const L = lines(p.song, centre, shift);
+    return L.lines.map((line) => ({ title: p.song.title, line, beat: L.beat, bar: L.bar, lo: L.lo, hi: L.hi }));
+  });
+}
+
+const SAVE = "vocal-coach-simple.centre";
+const loadCentre = () => { const n = Number(localStorage.getItem(SAVE)); return Number.isFinite(n) && n >= 40 && n <= 80 ? n : 60; };
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 
 export function App() {
   const engine = useRef(new Engine()).current;
-  const view = useRef<StageView>({ now: () => engine.now(), trace: [], take: null, glide: null });
-  const R = useRef({ sound: null as Sound | null, saved: loadSaved(), heard: [] as number[], lastUi: 0, maskUntil: 0, finishing: false, recAt: 0 });
+  const view = useRef<StageView>({ now: () => engine.now(), trace: [], take: null, glide: null, listenUntil: 0, tap: null });
+  const R = useRef({ piano: null as Piano | null, centre: loadCentre(), heard: [] as number[], lastUi: 0, recAt: 0, guide: { midi: 0, until: 0 }, slideEnd: 0, segs: [] as Seg[], index: 0, playing: false, loop: false });
 
   const [ready, setReady] = useState(false);
-  const [micError, setMicError] = useState<string | null>(null);
-  const [note, setNote] = useState<{ name: string; hint: string; level: number }>({ name: "", hint: "", level: 0 });
+  const [micError, setMicError] = useState("");
+  const [note, setNote] = useState("");
   const [sheet, setSheet] = useState<null | "lesson" | "song">(null);
   const [custom, setCustom] = useState<Song[]>(() => loadCustom());
-  const [importError, setImportError] = useState<string | null>(null);
+  const [importError, setImportError] = useState("");
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
-  const [review, setReview] = useState<{ blob: Blob; title: string } | null>(null);
-  const [session, setSession] = useState<{ title: string; steps: Step[]; isSong: boolean } | null>(null);
+  const [review, setReview] = useState<Blob | null>(null);
+  const [session, setSession] = useState<Lesson | null>(null);
   const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState<"ready" | "running" | "result">("ready");
-  const [result, setResult] = useState<{ stars: number; line: string } | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loop, setLoop] = useState(false);
   const [shift, setShift] = useState(0);
-  const [slow, setSlow] = useState(false);
-  const [tune, setTune] = useState(true);
-  const [best, setBest] = useState<Record<string, number>>(() => R.current.saved.best);
-  const S = useRef({ session, index, phase, shift, slow, tune });
-  S.current = { session, index, phase, shift, slow, tune };
 
-  const persist = () => { try { localStorage.setItem(SAVE, JSON.stringify(R.current.saved)); } catch { /* storage blocked */ } };
+  const segs = useMemo(() => (session ? flatten(session.parts, R.current.centre, shift) : []), [session, shift]);
+  R.current.segs = segs;
+  R.current.loop = loop;
 
   const start = useCallback(async () => {
     if (engine.ready) return true;
     try {
       await engine.start();
-      R.current.sound = new Sound(engine.ctx!, engine.out!);
+      R.current.piano = new Piano(engine.ctx!, engine.out!);
       if (import.meta.env.DEV) Object.assign(window, { __app: { engine, view, R } });
       setReady(true);
-      setMicError(null);
+      setMicError("");
       return true;
     } catch {
-      setMicError("The microphone is blocked. Allow it for this page in your browser, then try again.");
+      setMicError("Microphone blocked. Allow it for this page, then try again.");
       return false;
     }
   }, [engine]);
 
-  // ---------------------------------------------------------------- finishing a step
-  const finishStep = useCallback(async () => {
-    const r = R.current, v = view.current, s = S.current;
-    if (r.finishing || s.phase !== "running" || !s.session) return;
-    r.finishing = true;
-    const step = s.session.steps[s.index];
-    let stars = 0, line = "";
-    if (v.take) {
-      const take = v.take;
-      if (take.listenOnly) { v.take = null; r.finishing = false; setPhase("ready"); return; }
-      const res = take.result();
-      stars = res.stars;
-      line = res.sung < 1 ? "No singing came through. Sing out, close to the microphone, and try again." : `${res.landed} of ${res.total} notes landed.`;
-      if (step.kind === "song" && s.session.isSong && stars > (r.saved.best[step.song.id] ?? 0)) { r.saved.best[step.song.id] = stars; persist(); setBest({ ...r.saved.best }); }
-    } else if (v.glide) {
-      const sm = v.glide.summary();
-      stars = sm.repeats === 0 ? 0 : sm.smoothness > 0.85 ? 3 : sm.smoothness > 0.6 ? 2 : 1;
-      line = sm.repeats === 0 ? "No slide was picked up. Try again a little louder." : `${Math.round(sm.smoothness * 100)}% smooth, reaching ${Math.round(sm.coverage * 100)}% of the way.`;
-    }
-    v.take = null; v.glide = null;
-    r.sound?.hush();
-    r.finishing = false;
-    setResult({ stars, line });
-    setPhase("result");
+  // ---------------------------------------------------------------- the transport
+  const halt = useCallback(() => {
+    const r = R.current, v = view.current;
+    v.take = null; v.glide = null; v.listenUntil = 0;
+    r.piano?.hush();
+    r.playing = false;
+    setPlaying(false);
   }, []);
+
+  /** Play one line or slide: the piano first, then the singer. */
+  const play = useCallback((i: number) => {
+    const r = R.current, v = view.current, piano = r.piano, ctx = engine.ctx;
+    const seg = r.segs[i];
+    if (!seg || !piano || !ctx) { halt(); r.index = 0; setIndex(0); return; }
+    piano.hush();
+    r.index = i; setIndex(i);
+    r.playing = true; setPlaying(true);
+    const at = ctx.currentTime + 0.12;
+    if (seg.line) {
+      const p = callAndResponse(seg.line, seg.beat, seg.bar);
+      // Keep the picture framed on the whole song, not jumping about line by line.
+      p.lo = seg.lo; p.hi = seg.hi;
+      v.glide = null;
+      v.take = new Take(p, at);
+      p.chords.forEach((c, k) => piano.chord(c.midi, at + c.at, c.dur, k === 0 ? 0.42 : 0.3));
+      for (const n of p.notes) if (n.role === "cue") piano.play(n.midi, at + n.start, n.dur, 0.8);
+      for (const t of p.ticks) piano.tick(at + t);
+    } else if (seg.slide) {
+      const { from, to, down } = seg.slide;
+      v.take = null;
+      v.glide = new GlideRun({ from, to, repeats: 1, direction: down ? "down" : "up" }, at);
+      const len = piano.run(down ? to : from, down ? from : to, at);
+      v.listenUntil = at + len;
+      r.slideEnd = at + len + 12;
+    }
+  }, [engine, halt]);
+
+  const next = useCallback(() => {
+    const r = R.current;
+    if (r.loop) play(r.index);
+    else if (r.index + 1 < r.segs.length) play(r.index + 1);
+    else { halt(); r.index = 0; setIndex(0); }
+  }, [play, halt]);
+
+  // A change of key restarts the line in the new key.
+  useEffect(() => { if (R.current.playing) play(R.current.index); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [shift]);
 
   // ---------------------------------------------------------------- the ear
   useEffect(() => engine.onFrame((heard: Frame) => {
     const r = R.current, v = view.current;
     let f = heard;
-    if (f.t < r.maskUntil) f = { ...f, voiced: false, midi: NaN };
+    const mute = () => { f = { ...f, voiced: false, midi: NaN }; };
+    // A guide tone the singer just tapped is the piano, not the voice.
+    if (f.voiced && f.t < r.guide.until && f.db < Math.min(engine.floorDb + 18, -38) && Math.abs(folded(f.midi, r.guide.midi)) < 60) mute();
     let q = -1;
     const take = v.take, glide = v.glide;
     if (take) {
-      // While the piano plays a note for the singer to hear, the mic is hearing the speakers.
-      const sounding = take.noteAt(take.time(f.t) - LATENCY);
-      if (take.listenOnly || sounding?.role === "cue") f = { ...f, voiced: false, midi: NaN };
+      // While it is the piano's turn, the mic is hearing the speakers.
+      if (take.listening(f.t)) mute();
       q = take.push(f, engine.floorDb);
-      if (take.done(f.t)) void finishStep();
+      if (take.done(f.t)) next();
     } else if (glide) {
+      if (f.t < v.listenUntil) mute();
       glide.update(f, f.t);
-      q = 2; // a slide passes through every pitch on purpose: draw it plain, not judged
-      if (glide.finished) void finishStep();
+      q = 2;
+      if (glide.finished || f.t > r.slideEnd) next();
     } else if (f.voiced) {
-      // Learn where this voice sits, so songs can be put in a comfortable key.
+      // Learn where this voice sits, so songs can start in a comfortable key.
       r.heard.push(f.midi);
       if (r.heard.length > 900) r.heard.splice(0, 300);
-      if (r.heard.length >= 150 && r.heard.length % 60 === 0) { r.saved.centre = Math.round(median(r.heard)); persist(); }
+      if (r.heard.length >= 150 && r.heard.length % 60 === 0) { r.centre = Math.round(median(r.heard)); try { localStorage.setItem(SAVE, String(r.centre)); } catch { /* storage blocked */ } }
     }
     v.trace.push({ t: f.t, midi: f.midi, db: f.db, voiced: f.voiced, q });
     if (v.trace.length > 900) v.trace.splice(0, 300);
     if (f.t - r.lastUi > 0.1) {
       r.lastUi = f.t;
-      const off = f.voiced ? (f.midi - Math.round(f.midi)) * 100 : 0;
-      setNote({ name: f.voiced ? noteName(f.midi) : "", hint: !f.voiced ? "" : Math.abs(off) <= 15 ? "on the note" : off < 0 ? "a little under" : "a little over", level: Math.max(0, Math.min(1, (engine.level + 60) / 50)) });
+      setNote(f.voiced ? noteName(f.midi) : "");
       if (engine.recording) setRecSecs(f.t - r.recAt);
     }
-  }), [engine, finishStep]);
+  }), [engine, next]);
 
-  // ---------------------------------------------------------------- running a step
-  const startStep = (i: number, listenOnly = false) => {
-    const r = R.current, v = view.current, s = S.current;
-    const step = s.session?.steps[i];
-    const sound = r.sound;
-    if (!step || !sound || !engine.ctx) return;
-    sound.hush();
-    setIndex(i);
-    setResult(null);
-    v.trace = [];
-    const now = engine.now();
-    if (step.kind === "song") {
-      const p = prepare(step.song, r.saved.centre, s.shift, s.slow ? 0.75 : 1);
-      const at = now + 0.15;
-      const level = listenOnly ? 1 : s.tune ? 0.55 : 0;
-      v.glide = null;
-      v.take = new Take(p, at, level, listenOnly);
-      // Count-in on the beat, then the tune.
-      for (let b = 0; b * p.beat < p.lead - 0.01; b++) sound.click(at + b * p.beat, b % step.song.beatsPerBar === 0);
-      for (const n of p.notes) {
-        if (n.role === "cue") sound.note(n.midi, at + n.start, n.dur, 1);
-        else if (n.role === "both" && level > 0) sound.note(n.midi, at + n.start, n.dur, level);
-        else if (n.role === "solo" && listenOnly) sound.note(n.midi, at + n.start, n.dur, 0.6);
-      }
-    } else {
-      const lo = r.saved.centre - 4, hi = r.saved.centre + 4;
-      v.take = null;
-      v.glide = new GlideRun({ from: lo, to: hi, repeats: step.repeats, direction: step.down ? "down" : "up" }, now);
-      // One sliding tone, the shape to copy; the mic ignores it while it plays.
-      const len = sound.slide(step.down ? hi : lo, step.down ? lo : hi, engine.ctx.currentTime + 0.1);
-      r.maskUntil = now + len + 0.3;
-    }
-    setPhase("running");
-  };
+  // ---------------------------------------------------------------- actions
+  /** Tap a note anywhere to hear it on the piano. */
+  const guide = useCallback(async (midi: number) => {
+    if (!(await start())) return;
+    const r = R.current;
+    await r.piano!.ready;
+    r.piano!.play(midi, engine.ctx!.currentTime, 1.3, 0.8);
+    r.guide = { midi, until: engine.now() + 1.8 };
+    view.current.tap = { midi, t: engine.now() };
+  }, [engine, start]);
 
-  const stop = () => { const v = view.current; v.take = null; v.glide = null; R.current.sound?.hush(); R.current.maskUntil = 0; setPhase("ready"); };
-  const leave = () => { stop(); setSession(null); setResult(null); };
-  const open = async (title: string, steps: Step[], isSong: boolean) => {
+  const open = async (lesson: Lesson) => {
     if (!(await start())) return;
     setSheet(null);
     setShift(0);
-    setIndex(0);
-    setResult(null);
-    setPhase("ready");
-    setSession({ title, steps, isSong });
+    setLoop(false);
+    R.current.index = 0; setIndex(0);
+    setSession(lesson);
+    // The same list the next render will build, so playing can start at once.
+    R.current.segs = flatten(lesson.parts, R.current.centre, 0);
+    await R.current.piano!.ready;
+    play(0);
   };
+  const leave = () => { halt(); setSession(null); };
+  const toggle = () => (R.current.playing ? halt() : play(R.current.index));
+  const step = (d: number) => { const i = Math.max(0, Math.min(segs.length - 1, R.current.index + d)); if (R.current.playing) play(i); else { R.current.index = i; setIndex(i); } };
 
-  // ---------------------------------------------------------------- record
   const toggleRecord = async () => {
     if (!(await start())) return;
     if (engine.recording) {
       const blob = await engine.stopRecording();
       setRecording(false);
-      if (blob) setReview({ blob, title: "Your recording" });
+      if (blob) setReview(blob);
     } else if (engine.startRecording()) { R.current.recAt = engine.now(); setRecSecs(0); setRecording(true); }
   };
 
   const importSong = async (file: File) => {
-    setImportError(null);
+    setImportError("");
     try {
-      const song = songFromMidi(await file.arrayBuffer(), file.name);
-      const next = [song, ...custom];
+      const next = [songFromMidi(await file.arrayBuffer(), file.name), ...custom];
       setCustom(next);
       saveCustom(next);
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "That file could not be read.");
     }
   };
-  const removeSong = (id: string) => { const next = custom.filter((s) => s.id !== id); setCustom(next); saveCustom(next); };
+  const removeSong = (id: string) => { const rest = custom.filter((s) => s.id !== id); setCustom(rest); saveCustom(rest); };
 
-  if (review) return <Review blob={review.blob} title={review.title} onClose={() => setReview(null)} />;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSheet(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  const step = session?.steps[index];
-  const stars = (n: number, of = 3) => <span className="stars">{Array.from({ length: of }, (_, i) => <i key={i} data-on={i < n}>★</i>)}</span>;
+  if (review) return <Review blob={review} onClose={() => setReview(null)} onNote={(m) => void guide(m)} />;
+
+  const seg = segs[index];
+  const first = segs.find((s) => s.line)?.line?.notes[0].midi;
 
   return (
     <main className="app">
       <header className="bar">
-        {session ? (
-          <>
-            <button className="icon" onClick={leave} aria-label="Back"><ArrowLeft size={18} /></button>
-            <strong>{session.title}</strong>
-            {session.steps.length > 1 && <span className="pill">{index + 1} of {session.steps.length}</span>}
-          </>
-        ) : <strong className="brand">Vocal Coach</strong>}
-        <span className="readout" data-on={!!note.name}><b>{note.name || "–"}</b><small>{note.hint}</small></span>
-        <span className="meter" aria-hidden="true"><i style={{ width: `${note.level * 100}%` }} /></span>
+        {session && <button className="icon" onClick={leave} aria-label="Back"><ArrowLeft size={18} /></button>}
+        {session && <span className="title">{seg?.title ?? session.title}</span>}
+        <span className="readout">{note}</span>
+        {session && first !== undefined && (
+          <span className="key" role="group" aria-label="Key">
+            <button className="icon" onClick={() => setShift((k) => Math.max(-12, k - 1))} aria-label="Lower key"><Minus size={16} /></button>
+            <span>{noteName(first)}</span>
+            <button className="icon" onClick={() => setShift((k) => Math.min(12, k + 1))} aria-label="Higher key"><Plus size={16} /></button>
+          </span>
+        )}
       </header>
 
-      <section className="stage-wrap">
-        <Stage view={view} />
+      <div className="progress" data-on={!!session} aria-hidden="true"><i style={{ width: `${segs.length ? ((index + (playing ? 0.5 : 0)) / segs.length) * 100 : 0}%` }} /></div>
 
+      <section className="stage-wrap">
+        <Stage view={view} onTap={(m) => void guide(m)} />
         {!ready && (
           <div className="overlay">
-            <div className="card">
-              <h1>See your voice</h1>
-              <p>Sing anything and watch the line. Green means you are on a note.</p>
-              <button className="primary big" onClick={() => void start()}>Start</button>
-              {micError && <p className="error">{micError}</p>}
-            </div>
-          </div>
-        )}
-
-        {session && step && phase === "ready" && (
-          <div className="overlay">
-            <div className="card">
-              <h2>{step.title}</h2>
-              <p>{step.tip}</p>
-              {step.kind === "song" && (
-                <div className="opts">
-                  <span className="group" role="group" aria-label="Key">
-                    <button className="icon" onClick={() => setShift((k) => Math.max(-12, k - 1))} aria-label="Lower"><Minus size={16} /></button>
-                    <small>{shift === 0 ? "Key" : shift > 0 ? `+${shift}` : shift}</small>
-                    <button className="icon" onClick={() => setShift((k) => Math.min(12, k + 1))} aria-label="Higher"><Plus size={16} /></button>
-                  </span>
-                  <button className="chip" aria-pressed={slow} onClick={() => setSlow((x) => !x)}>Slow</button>
-                  <button className="chip" aria-pressed={tune} onClick={() => setTune((x) => !x)}>Piano plays the tune</button>
-                </div>
-              )}
-              <div className="actions">
-                <button className="primary big" onClick={() => startStep(index)}>Sing</button>
-                {step.kind === "song" && <button className="big" onClick={() => startStep(index, true)}>Listen first</button>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {session && step && phase === "result" && result && (
-          <div className="overlay">
-            <div className="card">
-              <h2>{step.title}</h2>
-              {stars(result.stars)}
-              <p>{result.line}</p>
-              <div className="actions">
-                {session.steps[index + 1]
-                  ? <button className="primary big" onClick={() => { setIndex(index + 1); setResult(null); setPhase("ready"); }}>Next</button>
-                  : <button className="primary big" onClick={leave}>Done</button>}
-                <button className="big" onClick={() => startStep(index)}>Again</button>
-              </div>
-            </div>
+            <button className="primary" onClick={() => void start()}>Start</button>
+            {micError && <p className="error">{micError}</p>}
           </div>
         )}
       </section>
 
       <footer className="dock">
         {session ? (
-          phase === "running" ? <button onClick={stop}><Square size={18} /><span>Stop</span></button> : <span className="hint">{step?.kind === "song" ? "The notes come to the line. Sing each one as it arrives." : "Follow the two dashed lines."}</span>
+          <div className="transport">
+            <button className="icon" onClick={() => step(-1)} disabled={index === 0} aria-label="Previous line"><SkipBack size={20} /></button>
+            <button className="icon play" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>{playing ? <Pause size={22} /> : <Play size={22} />}</button>
+            <button className="icon" onClick={() => setLoop((x) => !x)} aria-pressed={loop} aria-label="Repeat this line"><Repeat size={20} /></button>
+            <button className="icon" onClick={() => step(1)} disabled={index >= segs.length - 1} aria-label="Next line"><SkipForward size={20} /></button>
+          </div>
         ) : (
           <>
             <button onClick={() => void toggleRecord()} data-rec={recording}>
-              {recording ? <Square size={20} /> : <Circle size={20} fill="currentColor" />}
-              <span>{recording ? `Stop · ${fmt(recSecs)}` : "Record"}</span>
+              {recording ? <Square size={18} /> : <Circle size={18} fill="currentColor" />}
+              <span>{recording ? fmt(recSecs) : "Record"}</span>
             </button>
-            <button onClick={() => setSheet("lesson")} disabled={recording}><BookOpen size={20} /><span>Lesson</span></button>
-            <button onClick={() => setSheet("song")} disabled={recording}><Music size={20} /><span>Song</span></button>
+            <button onClick={() => setSheet("lesson")} disabled={recording}><BookOpen size={18} /><span>Lesson</span></button>
+            <button onClick={() => setSheet("song")} disabled={recording}><Music size={18} /><span>Song</span></button>
           </>
         )}
       </footer>
@@ -317,41 +272,24 @@ export function App() {
       {sheet && (
         <div className="backdrop" onClick={() => setSheet(null)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={sheet === "lesson" ? "Lessons" : "Songs"}>
-            <div className="sheet-head">
-              <h2>{sheet === "lesson" ? "Lessons" : "Songs"}</h2>
-              <button className="icon" onClick={() => setSheet(null)} aria-label="Close"><X size={18} /></button>
-            </div>
-            {sheet === "lesson" ? (
-              <ul className="list">
-                {LESSONS.map((l) => (
-                  <li key={l.id}>
-                    <button onClick={() => void open(l.title, l.steps, false)}>
-                      <b>{l.title}</b><small>{l.minutes} min · {l.about}</small>
-                    </button>
+            <i className="grip" aria-hidden="true" />
+            <ul className="list">
+              {sheet === "lesson"
+                ? LESSONS.map((l) => <li key={l.title}><button onClick={() => void open(l)}>{l.title}</button></li>)
+                : [...custom, ...SONGS].map((s) => (
+                  <li key={s.id}>
+                    <button onClick={() => void open({ title: s.title, parts: [{ song: s }] })}>{s.title}</button>
+                    {s.custom && <button className="icon" onClick={() => removeSong(s.id)} aria-label={`Remove ${s.title}`}><Trash2 size={16} /></button>}
                   </li>
                 ))}
-              </ul>
-            ) : (
-              <>
-                <ul className="list">
-                  {[...custom, ...SONGS].map((s) => (
-                    <li key={s.id}>
-                      <button onClick={() => void open(s.title, [sing(s, "Sing along with the piano. The words light up as they arrive.")], true)}>
-                        <b><span className="emoji">{s.emoji}</span>{s.title}</b>
-                        <small>{s.credit}{best[s.id] ? <> · {stars(best[s.id])}</> : null}</small>
-                      </button>
-                      {s.custom && <button className="icon" onClick={() => removeSong(s.id)} aria-label={`Remove ${s.title}`}><Trash2 size={16} /></button>}
-                    </li>
-                  ))}
-                </ul>
-                <label className="import">
-                  <FileMusic size={18} /> Import a song
-                  <input type="file" accept=".mid,.midi,.kar,audio/midi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importSong(f); e.target.value = ""; }} />
-                </label>
-                <p className="fine">Any tune you have as a MIDI file (.mid). It stays on this device.</p>
-                {importError && <p className="error">{importError}</p>}
-              </>
+            </ul>
+            {sheet === "song" && (
+              <label className="import">
+                <Upload size={16} /> Import MIDI
+                <input type="file" accept=".mid,.midi,.kar,audio/midi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importSong(f); e.target.value = ""; }} />
+              </label>
             )}
+            {importError && <p className="error">{importError}</p>}
           </div>
         </div>
       )}

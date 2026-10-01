@@ -1,7 +1,7 @@
 /**
  * Turn a Standard MIDI File into a Song the highway can play. Picks the most vocal-looking track,
- * flattens it to one voice and attaches karaoke lyrics where the file has them. Nothing here is
- * shipped with the app: the singer brings the file.
+ * flattens it to one voice, attaches karaoke lyrics where the file has them, and guesses the key
+ * so the piano can play its chord. Nothing here is shipped with the app: the singer brings the file.
  */
 import type { Song, SongStep } from "./songs";
 
@@ -114,6 +114,26 @@ function pickMelody(tracks: Track[]) {
   return best;
 }
 
+/** Krumhansl key profiles: which key fits the pitch-class weight best. */
+const MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MIN = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+function guessKey(notes: { midi: number; dur: number }[]) {
+  const w = new Array(12).fill(0);
+  for (const n of notes) w[((n.midi % 12) + 12) % 12] += n.dur;
+  const corr = (profile: number[], shift: number) => {
+    let s = 0;
+    for (let i = 0; i < 12; i++) s += w[(i + shift) % 12] * profile[i];
+    return s;
+  };
+  let best = { pc: 0, mode: "major" as "major" | "minor", score: -Infinity };
+  for (let pc = 0; pc < 12; pc++) {
+    const a = corr(MAJ, pc), b = corr(MIN, pc);
+    if (a > best.score) best = { pc, mode: "major", score: a };
+    if (b > best.score) best = { pc, mode: "minor", score: b };
+  }
+  return best;
+}
+
 export function songFromMidi(buf: ArrayBuffer, filename: string): Song {
   const { tracks, tpq, toSeconds, bpm } = parseMidi(buf);
   const track = pickMelody(tracks);
@@ -143,6 +163,7 @@ export function songFromMidi(buf: ArrayBuffer, filename: string): Song {
   };
 
   const base = Math.min(...notes.map((n) => n.midi));
+  const key = guessKey(notes);
   const beat = 60 / bpm;
   const steps: SongStep[] = [];
   let t = notes[0].start;
@@ -152,5 +173,6 @@ export function songFromMidi(buf: ArrayBuffer, filename: string): Song {
     t = n.start + Math.max(0.08, n.dur);
   }
   const title = filename.replace(/\.(mid|midi|kar)$/i, "").replace(/[_-]+/g, " ").trim() || "Imported song";
-  return { id: `custom-${Date.now().toString(36)}`, title, credit: `From ${filename}`, emoji: "🎤", bpm, beatsPerBar: 4, steps, custom: true };
+  // The key note, as steps above the lowest note, so the piano can play the right chord before each line.
+  return { id: `custom-${Date.now().toString(36)}`, title, bpm, beatsPerBar: 4, steps, custom: true, tonic: ((key.pc - base) % 12 + 12) % 12, minor: key.mode === "minor" };
 }

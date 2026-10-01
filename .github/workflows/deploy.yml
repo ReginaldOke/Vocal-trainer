@@ -23,16 +23,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # The simple app is the site. It is built first because its build empties dist/.
+      - run: npm ci
+        working-directory: simple
+      - run: npm run build
+        working-directory: simple
+      # The earlier full app is kept, published under /full/.
       - run: npm ci
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-      # The simplified app is its own small project; it is published beside the full one at /simple/.
-      - run: npm ci
-        working-directory: simple
-      - run: npm run build
-        working-directory: simple
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
