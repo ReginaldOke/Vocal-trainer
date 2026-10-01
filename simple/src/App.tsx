@@ -40,7 +40,7 @@ function flatten(parts: Part[], centre: number, shift: number): Seg[] {
 
 /**
  * The computer keyboard as a piano, as music software lays it out: the home row is the white
- * notes from C, the row above is the black notes between them. Z and X move down and up an octave.
+ * notes from C, the row above is the black notes between them. The octave keys are in OCTAVE_KEYS.
  */
 const KEYS: Record<string, number> = {
   KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11,
@@ -86,6 +86,8 @@ function Thumb({ parts }: { parts: Part[] }) {
     </svg>
   );
 }
+
+const OCTAVE_KEYS: Record<string, number> = { BracketLeft: -12, Comma: -12, KeyZ: -12, BracketRight: 12, Period: 12, KeyX: 12 };
 
 const SAVE = "vocal-coach-simple.centre";
 const loadCentre = () => { const n = Number(localStorage.getItem(SAVE)); return Number.isFinite(n) && n >= 40 && n <= 80 ? n : 60; };
@@ -289,7 +291,9 @@ export function App() {
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       // The C at or just below where this voice sits, unless Z or X has moved it.
       const base = r.octave ?? Math.floor(r.centre / 12) * 12;
-      if (e.code === "KeyZ" || e.code === "KeyX") { r.octave = Math.max(24, Math.min(72, base + (e.code === "KeyZ" ? -12 : 12))); return; }
+      // Octave down and up: [ and ], or , and . (Z and X work too, as in Ableton).
+      const shift = OCTAVE_KEYS[e.code];
+      if (shift) { e.preventDefault(); r.octave = Math.max(24, Math.min(72, base + shift)); return; }
       const step = KEYS[e.code];
       if (step === undefined) return;
       e.preventDefault();
