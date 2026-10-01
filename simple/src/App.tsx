@@ -38,6 +38,15 @@ function flatten(parts: Part[], centre: number, shift: number): Seg[] {
   });
 }
 
+/**
+ * The computer keyboard as a piano, as music software lays it out: the home row is the white
+ * notes from C, the row above is the black notes between them. Z and X move down and up an octave.
+ */
+const KEYS: Record<string, number> = {
+  KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11,
+  KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16,
+};
+
 const SAVE = "vocal-coach-simple.centre";
 const loadCentre = () => { const n = Number(localStorage.getItem(SAVE)); return Number.isFinite(n) && n >= 40 && n <= 80 ? n : 60; };
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -45,10 +54,9 @@ const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return
 
 export function App() {
   const engine = useRef(new Engine()).current;
-  const view = useRef<StageView>({ now: () => engine.now(), trace: [], take: null, glide: null, listenUntil: 0, tap: null });
-  const R = useRef({ piano: null as Piano | null, centre: loadCentre(), heard: [] as number[], lastUi: 0, recAt: 0, guide: { midi: 0, until: 0 }, slideEnd: 0, segs: [] as Seg[], index: 0, playing: false, loop: false });
+  const view = useRef<StageView>({ now: () => engine.now(), trace: [], take: null, glide: null, listenUntil: 0, tap: null, held: new Set() });
+  const R = useRef({ piano: null as Piano | null, centre: loadCentre(), heard: [] as number[], lastUi: 0, recAt: 0, guides: new Map<number, number>(), keys: new Map<string, number>(), octave: null as number | null, slideEnd: 0, segs: [] as Seg[], index: 0, playing: false, loop: false });
 
-  const [ready, setReady] = useState(false);
   const [micError, setMicError] = useState("");
   const [note, setNote] = useState("");
   const [sheet, setSheet] = useState<null | "lesson" | "song">(null);
@@ -68,19 +76,21 @@ export function App() {
   R.current.loop = loop;
 
   const start = useCallback(async () => {
-    if (engine.ready) return true;
+    if (engine.ready && R.current.piano) return true;
     try {
       await engine.start();
-      R.current.piano = new Piano(engine.ctx!, engine.out!);
+      R.current.piano ??= new Piano(engine.ctx!, engine.out!);
       if (import.meta.env.DEV) Object.assign(window, { __app: { engine, view, R } });
-      setReady(true);
       setMicError("");
       return true;
     } catch {
-      setMicError("Microphone blocked. Allow it for this page, then try again.");
+      setMicError("Microphone blocked. Allow it for this page.");
       return false;
     }
   }, [engine]);
+
+  // Start listening as the page opens: no button. A first visit shows the browser's own prompt.
+  useEffect(() => { void start(); }, [start]);
 
   // ---------------------------------------------------------------- the transport
   const halt = useCallback(() => {
@@ -134,8 +144,10 @@ export function App() {
     const r = R.current, v = view.current;
     let f = heard;
     const mute = () => { f = { ...f, voiced: false, midi: NaN }; };
-    // A guide tone the singer just tapped is the piano, not the voice.
-    if (f.voiced && f.t < r.guide.until && f.db < Math.min(engine.floorDb + 18, -38) && Math.abs(folded(f.midi, r.guide.midi)) < 60) mute();
+    // A note the singer just played on the piano is the piano, not the voice.
+    if (f.voiced && r.guides.size && f.db < Math.min(engine.floorDb + 18, -38)) {
+      for (const [m, until] of r.guides) { if (f.t > until) r.guides.delete(m); else if (Math.abs(folded(f.midi, m)) < 60) { mute(); break; } }
+    }
     let q = -1;
     const take = v.take, glide = v.glide;
     if (take) {
@@ -170,7 +182,7 @@ export function App() {
     const r = R.current;
     await r.piano!.ready;
     r.piano!.play(midi, engine.ctx!.currentTime, 1.3, 0.8);
-    r.guide = { midi, until: engine.now() + 1.8 };
+    r.guides.set(midi, engine.now() + 1.8);
     view.current.tap = { midi, t: engine.now() };
   }, [engine, start]);
 
@@ -211,11 +223,48 @@ export function App() {
   };
   const removeSong = (id: string) => { const rest = custom.filter((s) => s.id !== id); setCustom(rest); saveCustom(rest); };
 
+  // The computer keyboard plays the piano: hold one key for a note, several for a chord.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSheet(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    const r = R.current;
+    const up = (code: string) => {
+      const midi = r.keys.get(code);
+      if (midi === undefined) return;
+      r.keys.delete(code);
+      if ([...r.keys.values()].includes(midi)) return;
+      r.piano?.release(midi);
+      view.current.held.delete(midi);
+      r.guides.set(midi, engine.now() + 1);
+    };
+    const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setSheet(null); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // The C at or just below where this voice sits, unless Z or X has moved it.
+      const base = r.octave ?? Math.floor(r.centre / 12) * 12;
+      if (e.code === "KeyZ" || e.code === "KeyX") { r.octave = Math.max(24, Math.min(72, base + (e.code === "KeyZ" ? -12 : 12))); return; }
+      const step = KEYS[e.code];
+      if (step === undefined) return;
+      e.preventDefault();
+      const midi = base + step;
+      r.keys.set(e.code, midi);
+      void start().then(async (ok) => {
+        if (!ok || !r.piano) return;
+        await r.piano.ready;
+        // The key may already be up again by the time the piano is ready.
+        if (r.keys.get(e.code) !== midi) return;
+        r.piano.press(midi);
+        view.current.held.add(midi);
+        r.guides.set(midi, engine.now() + 30);
+      });
+    };
+    const onUp = (e: KeyboardEvent) => up(e.code);
+    const allUp = () => { for (const code of [...r.keys.keys()]) up(code); };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", allUp);
+    return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); window.removeEventListener("blur", allUp); };
+  }, [engine, start]);
 
   if (review) return <Review blob={review} onClose={() => setReview(null)} onNote={(m) => void guide(m)} />;
 
@@ -241,10 +290,10 @@ export function App() {
 
       <section className="stage-wrap">
         <Stage view={view} onTap={(m) => void guide(m)} />
-        {!ready && (
+        {micError && (
           <div className="overlay">
-            <button className="primary" onClick={() => void start()}>Start</button>
-            {micError && <p className="error">{micError}</p>}
+            <p className="error">{micError}</p>
+            <button className="primary" onClick={() => void start()}>Try again</button>
           </div>
         )}
       </section>

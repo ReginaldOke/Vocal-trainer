@@ -56,8 +56,18 @@ export class Engine {
 
   now() { return this.ctx ? this.ctx.currentTime : 0; }
 
-  /** Must be called from a tap so the browser allows audio. */
-  async start() {
+  private starting: Promise<void> | null = null;
+
+  /**
+   * Open the microphone and start listening. Safe to call from anywhere, any number of times:
+   * a browser that wants a touch before it runs audio gets one from the first tap or key press.
+   */
+  start() {
+    this.starting ??= this.open().catch((e) => { this.starting = null; throw e; });
+    return this.starting;
+  }
+
+  private async open() {
     if (this.ready) return;
     const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new Ctor({ latencyHint: "interactive" });
@@ -93,7 +103,11 @@ export class Engine {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 } });
       ctx.createMediaStreamSource(this.stream).connect(this.analyser);
     }
-    if (ctx.state === "suspended") await ctx.resume();
+    // Without a touch yet, some browsers hold the audio clock still. Do not wait on it: wake it
+    // on the first tap or key press, wherever that lands.
+    const wake = () => { if (ctx.state !== "running") void ctx.resume(); else for (const ev of ["pointerdown", "keydown", "touchend"]) window.removeEventListener(ev, wake, true); };
+    for (const ev of ["pointerdown", "keydown", "touchend"]) window.addEventListener(ev, wake, true);
+    void ctx.resume().catch(() => undefined);
     try { await (navigator as Navigator & { wakeLock?: { request(type: string): Promise<unknown> } }).wakeLock?.request("screen"); } catch { /* not available */ }
     this.ready = true;
     this.startedAt = ctx.currentTime;

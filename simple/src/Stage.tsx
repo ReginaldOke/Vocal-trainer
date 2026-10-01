@@ -14,6 +14,8 @@ export interface StageView {
   listenUntil: number;
   /** the last note tapped for a guide tone */
   tap: { midi: number; t: number } | null;
+  /** notes held down on the computer keyboard */
+  held: Set<number>;
 }
 
 const GREEN = "#3ecfa9", AMBER = "#f2b14c", RED = "#f0647c", BLUE = "#9fb0ff", INK = "rgba(240,238,233,";
@@ -63,6 +65,9 @@ export function Stage({ view, onTap }: { view: React.MutableRefObject<StageView>
       else if (glide) { wantLo = Math.min(glide.cfg.from, glide.cfg.to) - 3; wantHi = Math.max(glide.cfg.from, glide.cfg.to) + 3; }
       else if (recent.length) { wantLo = Math.min(...recent) - 5; wantHi = Math.max(...recent) + 5; }
       else { wantLo = lo; wantHi = hi; }
+      // Notes being played on the keys stay in view.
+      const shown = [...v.held, ...(v.tap && now - v.tap.t < 1.4 ? [v.tap.midi] : [])];
+      if (shown.length && !take && !glide) { wantLo = Math.min(wantLo, Math.min(...shown) - 3); wantHi = Math.max(wantHi, Math.max(...shown) + 3); }
       if (recent.length && (take || glide)) { wantLo = Math.min(wantLo, Math.min(...recent) - 2); wantHi = Math.max(wantHi, Math.max(...recent) + 2); }
       if (wantHi - wantLo < 14) { const mid = (wantHi + wantLo) / 2; wantLo = mid - 7; wantHi = mid + 7; }
       lo += (wantLo - lo) * 0.08; hi += (wantHi - hi) * 0.08;
@@ -80,8 +85,9 @@ export function Stage({ view, onTap }: { view: React.MutableRefObject<StageView>
         const isC = ((m % 12) + 12) % 12 === 0;
         g.fillStyle = isBlackKey(m) ? "rgba(255,255,255,0.012)" : "rgba(255,255,255,0.032)";
         g.fillRect(gutter, yy - row / 2, W - gutter, row - 1);
-        const lit = !!tapped && tapped.midi === m;
-        if (lit) { g.fillStyle = `rgba(159,176,255,${0.28 * (1 - (now - tapped!.t) / 1.4)})`; g.fillRect(0, yy - row / 2, W, row - 1); }
+        const down = v.held.has(m);
+        const lit = down || (!!tapped && tapped.midi === m);
+        if (lit) { g.fillStyle = `rgba(159,176,255,${down ? 0.3 : 0.28 * (1 - (now - tapped!.t) / 1.4)})`; g.fillRect(0, yy - row / 2, W, row - 1); }
         if (isC) { g.fillStyle = "rgba(255,255,255,0.12)"; g.fillRect(gutter, yy, W - gutter, 1); }
         if (lit || (!isBlackKey(m) && (row >= 13 || isC))) { g.fillStyle = lit ? "#fff" : INK + (isC ? "0.7)" : "0.34)"); g.fillText(noteName(m), 5, yy); }
       }

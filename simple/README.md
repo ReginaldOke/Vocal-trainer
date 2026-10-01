@@ -2,7 +2,9 @@
 
 A practice partner for singing: your voice drawn as a line, green when it sits on a note. Made to sit beside any lesson, with a teacher or alone.
 
+- It starts listening as it opens. The first visit shows the browser's microphone prompt; after that there is nothing to press.
 - **Tap any note** on the screen to hear it on the piano.
+- **Play the piano from the computer keyboard**, laid out as in music software: `A S D F G H J K L ;` are the white notes from C, `W E T Y U O P` the black notes between them. Hold several for a chord. `Z` and `X` move down and up an octave.
 - **Record** a take, then look at it closely: green on the note, amber close, red off, thicker where louder. Drag, pinch, tap to play from a spot.
 - **Lesson**: warm up, pitch workout, long notes, match a note.
 - **Song**: six songs, or import your own as a MIDI file.

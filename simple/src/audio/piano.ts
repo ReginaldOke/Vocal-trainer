@@ -44,6 +44,37 @@ export class Piano {
     src.stop(when + dur + 1);
   }
 
+  private held = new Map<number, { src: AudioBufferSourceNode; gain: GainNode }>();
+
+  /** Press a key and keep it down: the note rings until `release`, like a real key. Several can be down at once. */
+  press(midi: number, level = 0.8) {
+    if (this.held.has(midi)) return;
+    let best = -1;
+    for (const m of this.buffers.keys()) if (best < 0 || Math.abs(m - midi) < Math.abs(best - midi)) best = m;
+    if (best < 0) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffers.get(best)!;
+    src.playbackRate.value = midiToHz(midi) / midiToHz(best);
+    const gain = this.ctx.createGain();
+    gain.gain.value = level;
+    src.connect(gain).connect(this.out);
+    this.live.add(gain);
+    src.onended = () => { this.live.delete(gain); gain.disconnect(); if (this.held.get(midi)?.src === src) this.held.delete(midi); };
+    src.start();
+    this.held.set(midi, { src, gain });
+  }
+
+  /** Let a held key up: the damper falls and the note dies away. */
+  release(midi: number) {
+    const h = this.held.get(midi);
+    if (!h) return;
+    this.held.delete(midi);
+    const now = this.ctx.currentTime;
+    h.gain.gain.cancelScheduledValues(now);
+    h.gain.gain.setTargetAtTime(0, now, 0.12);
+    h.src.stop(now + 1);
+  }
+
   /** A chord, very slightly spread from the bottom, as a hand would play it. */
   chord(midis: number[], when = this.ctx.currentTime, dur = 2, level = 0.5) {
     midis.forEach((m, i) => this.play(m, when + i * 0.012, dur, level * (i === 0 ? 0.8 : 1)));
@@ -82,6 +113,7 @@ export class Piano {
     const now = this.ctx.currentTime;
     for (const g of this.live) { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.03); }
     this.live.clear();
+    this.held.clear();
   }
 }
 
